@@ -14,7 +14,7 @@ const CLIENT_ID = '264124983411-o94hvp7221a45f6c59trdv628nt97flo.apps.googleuser
 
 const MONEY_ID = '1lsNoI837NrxVJTpXI92RdQQLnfjNYcbPqSqEUOAWd6M';   // お金/ふたりのお金 台帳
 const TODO_ID  = '1551Q4cmKDR548uY1oc_eaK-gOAd8cml3658_1ez3uU0';   // 暮らし/ふたりの暮らし（やること・買い物・保証・ホーム設定）
-const FIXED_ID = '105jNfd5tCU2Sj_EIoxdajUWtUfKB5PBQZ4FQHfJZSig';   // お金/ふたりの固定費
+const FIXED_ID = '105jNfd5tCU2Sj_EIoxdajUWtUfKB5PBQZ4FQHfJZSig';   // お金/ふたりの共通口座（固定費・お小遣い・残高）
 const VAULT_NAME = 'ふたりの機密（暗号化済み）.json';                // 機密フォルダに作られる。中身は暗号化された文字だけ
 const FOLDERS = {
   root:       '1wB1vA_-J3nNG4dHAbefkivivaZoTHi6f',
@@ -90,6 +90,10 @@ const ACTIONS = {
   addDeposit:      (me, a) => addDeposit_(me, a[0]),
   deleteDeposit:   (me, a) => deleteDeposit_(me, a[0]),
   setRatio:        (me, a) => setRatio_(me, a[0]),
+  addExtra:        (me, a) => addExtra_(me, a[0]),
+  deleteExtra:     (me, a) => deleteExtra_(me, a[0]),
+  setBalance:      (me, a) => setBalance_(me, a[0], a[1], a[2]),
+  setAllowance:    (me, a) => setAllowance_(me, a[0]),
   // 書類
   getDocs:         (me)    => docsData_(),
   uploadDoc:       (me, a) => uploadDoc_(a[0], a[1], a[2]),
@@ -493,11 +497,25 @@ function fixedData_(me) {
     amount: Number(r[3]) || 0, memo: String(r[4] || '')
   }));
   const conf = ss.getSheetByName('設定').getRange(2, 1, 29, 4).getValues();
-  const ratio = {};
-  conf.forEach(r => { if (String(r[0]).trim()) ratio[String(r[0]).trim()] = Number(r[1]) || 0; });
+  const ratio = {}, allowance = {};
+  conf.forEach(r => {
+    const n = String(r[0]).trim();
+    if (!n) return;
+    ratio[n] = Number(r[1]) || 0;
+    allowance[n] = Number(r[2]) || 0;
+  });
+  const extras = readRows_(ss.getSheetByName('臨時のお小遣い'), 6, 5, r => r[3] !== '').map(r => ({
+    id: String(r[5]), date: fmtDate_(r[0]), month: monthStr_(r[1]) || monthStr_(r[0]), who: String(r[2]),
+    amount: Number(r[3]) || 0, reason: String(r[4] || '')
+  }));
+  const balances = readRows_(ss.getSheetByName('残高'), 6, 4, r => r[0] !== '').map(r => {
+    let snap = null;
+    try { snap = r[5] ? JSON.parse(r[5]) : null; } catch (e) {}
+    return { id: String(r[4]), month: monthStr_(r[0]), end: r[1] === '' ? null : Number(r[1]), start: r[2] === '' ? null : Number(r[2]), memo: String(r[3] || ''), allowance: snap };
+  });
   const categories = conf.map(r => String(r[3]).trim()).filter(Boolean);
   return {
-    items: items, records: records, deposits: deposits, ratio: ratio, categories: categories,
+    items: items, records: records, deposits: deposits, ratio: ratio, allowance: allowance, extras: extras, balances: balances, categories: categories,
     thisMonth: Utilities.formatDate(new Date(), TZ, 'yyyy-MM'),
     today: Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd'), sheetUrl: ss.getUrl()
   };
@@ -576,6 +594,62 @@ function setRatio_(me, ratio) {
     v.forEach((r, i) => {
       const n = String(r[0]).trim();
       if (n && ratio && n in ratio) sh.getRange(i + 2, 2).setValue(Math.max(0, Math.min(100, Math.round(Number(ratio[n]) || 0))));
+    });
+  });
+}
+
+function addExtra_(me, x) {
+  const amount = Math.round(Number(x && x.amount));
+  if (!(amount > 0)) throw err_('金額を1円以上で入れてください。');
+  if (!/^\d{4}-\d{2}$/.test(String(x.month))) throw err_('月の指定が正しくありません。');
+  return fixedWrite_(me, ss => {
+    const date = fmtDate_(x.date) || Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
+    ss.getSheetByName('臨時のお小遣い').appendRow([date.replace(/-/g, '/'), "'" + x.month, clean_(x.who, 20), amount, clean_(x.reason, 60), newId_()]);
+  });
+}
+
+function deleteExtra_(me, id) {
+  return fixedWrite_(me, ss => {
+    const sh = ss.getSheetByName('臨時のお小遣い');
+    const row = findRow_(sh, 5, id);
+    if (row > 0) sh.deleteRow(row);
+  });
+}
+
+/** その月の月末残高と月初残高（前の月の記録がないときだけ使う）を記録。両方とも毎回送る */
+function setBalance_(me, month, end, start) {
+  if (!/^\d{4}-\d{2}$/.test(String(month))) throw err_('月の指定が正しくありません。');
+  const num = v => (v === '' || v == null) ? '' : Math.round(Number(v));
+  const e = num(end), st = num(start);
+  if ((e !== '' && isNaN(e)) || (st !== '' && isNaN(st))) throw err_('残高は数字で入れてください。');
+  return fixedWrite_(me, ss => {
+    // 月末残高を入れた時点のお小遣いの額を記録しておく（あとで額を変えても過去の月の計算が変わらないように）
+    const snap = {};
+    ss.getSheetByName('設定').getRange(2, 1, 10, 3).getValues().forEach(r => { if (String(r[0]).trim()) snap[String(r[0]).trim()] = Number(r[2]) || 0; });
+    const snapText = e === '' ? '' : JSON.stringify(snap);
+    const sh = ss.getSheetByName('残高');
+    const last = sh.getLastRow();
+    let row = -1;
+    if (last >= 2) {
+      const v = sh.getRange(2, 1, last - 1, 1).getValues();
+      for (let i = 0; i < v.length; i++) if (monthStr_(v[i][0]) === month) { row = i + 2; break; }
+    }
+    if (row > 0) {
+      sh.getRange(row, 2, 1, 2).setValues([[e, st]]);
+      sh.getRange(row, 6).setValue(snapText);
+    } else {
+      sh.appendRow(["'" + month, e, st, '', newId_(), snapText]);
+    }
+  });
+}
+
+function setAllowance_(me, amounts) {
+  return fixedWrite_(me, ss => {
+    const sh = ss.getSheetByName('設定');
+    const v = sh.getRange(2, 1, 10, 1).getValues();
+    v.forEach((r, i) => {
+      const n = String(r[0]).trim();
+      if (n && amounts && n in amounts) sh.getRange(i + 2, 3).setValue(Math.max(0, Math.round(Number(amounts[n]) || 0)));
     });
   });
 }

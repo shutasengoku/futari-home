@@ -153,7 +153,9 @@ function buildStatic(){
   $('it-cat').innerHTML = S.f.categories.map(function(c){ return '<option>' + esc(c) + '</option>'; }).join('');
   $('dep-who').innerHTML = m.members.map(function(n, i){ return '<button type="button" class="m' + i + '" data-depwho="' + esc(n) + '" aria-pressed="' + (n === (S.depWho || S.me.member || m.members[0])) + '">' + esc(n) + '</button>'; }).join('');
   if (!S.depWho) S.depWho = S.me.member || m.members[0];
-  $('fixed-sheet-link').innerHTML = '<a href="' + esc(S.f.sheetUrl) + '" target="_blank" rel="noopener">固定費をスプレッドシートで開く</a>';
+  if (!S.exWho) S.exWho = S.me.member || m.members[0];
+  $('ex2-who').innerHTML = m.members.map(function(n, i){ return '<button type="button" class="m' + i + '" data-exwho="' + esc(n) + '" aria-pressed="' + (n === S.exWho) + '">' + esc(n) + '</button>'; }).join('');
+  $('fixed-sheet-link').innerHTML = '<a href="' + esc(S.f.sheetUrl) + '" target="_blank" rel="noopener">共通口座の表をスプレッドシートで開く</a>';
 }
 
 /* ---------- ホーム ---------- */
@@ -163,9 +165,10 @@ function renderHome(){
 
   var M = S.m.members;
   var fx = fixedMonth(S.f.thisMonth);
-  var depOk = M.filter(function(n){ return fx.target[n] > 0 && fx.deposited[n] >= fx.target[n]; }).length;
   var actives = S.m.projects.filter(function(p){ return p.status !== '完了'; });
-  var rows = '<div class="t-row"><span class="l">固定費（' + (+S.f.thisMonth.split('-')[1]) + '月）' + (fx.lines.length ? '・入金 ' + depOk + '/' + M.length + '人' : '') + '</span><b class="num">' + yen(fx.total) + '</b></div>';
+  var pfx = fixedMonth(shiftMonth(S.f.thisMonth, -1));
+  var rows = '<div class="t-row"><span class="l">共通口座 ' + (+S.f.thisMonth.split('-')[1]) + '月の固定費</span><b class="num">' + yen(fx.total) + '</b></div>';
+  if (pfx.living != null) rows += '<div class="t-row"><span class="l">' + (+pfx.month.split('-')[1]) + '月の生活費</span><b class="num">' + yen(pfx.living) + '</b></div>';
   rows += actives.slice(0, 3).map(function(p){
     var tt = projTotals(p.name), l = tt.total - tt.used;
     return '<div class="t-row"><span class="l">' + esc(p.name) + ' の残り</span><b class="num' + (l < 0 ? ' over' : '') + '">' + sYen(l) + '</b></div>';
@@ -250,10 +253,10 @@ function projTotals(name){ var keep = S.project; S.project = name; var t = money
 function renderMoneyHub(){
   if (!S.m) return;
   var M = S.m.members, fx = fixedMonth(S.f.thisMonth);
-  var dep = M.map(function(n){ return esc(n) + (fx.target[n] > 0 && fx.deposited[n] >= fx.target[n] ? ' 入金済み' : ' あと' + yen(Math.max(0, fx.target[n] - fx.deposited[n]))); }).join('・');
+  var dep = (fx.living != null ? '生活費 ' + yen(fx.living) + '・' : '月末の残高はまだ・') + 'お小遣い ' + yen(fx.allowanceTotal + fx.extraTotal);
   $('mh-monthly').innerHTML = '<button class="mcard c-fixed" type="button" data-go="fixed">' +
-    '<div class="m-head"><span class="m-name">固定費（共通口座）</span><span class="m-sub">開く →</span></div>' +
-    '<div class="m-sub">' + monthLabel(S.f.thisMonth) + 'の合計</div>' +
+    '<div class="m-head"><span class="m-name">共通口座</span><span class="m-sub">開く →</span></div>' +
+    '<div class="m-sub">' + monthLabel(S.f.thisMonth) + 'の固定費</div>' +
     '<div class="m-big num">' + yen(fx.total) + '</div>' +
     '<div class="bar thin"><span style="width:' + pct(fx.paid, fx.total) + '%;background:var(--fixed-ink)"></span></div>' +
     '<div class="m-sub">' + (fx.lines.length ? '引き落とし済み ' + yen(fx.paid) + '｜' + dep : '家賃や光熱費を登録しましょう') + '</div></button>';
@@ -491,12 +494,24 @@ function fixedMonth(ym){
   }).filter(Boolean).sort(function(a, b){ return (a.item.day || 99) - (b.item.day || 99); });
   var total = 0, paid = 0, unknown = 0;
   lines.forEach(function(l){ if (l.amount == null) unknown++; else { total += l.amount; if (l.paid) paid += l.amount; } });
-  var sumR = 0; M.forEach(function(n){ sumR += ratioOf(n); });
-  var target = {}, deposited = {};
-  M.forEach(function(n){ target[n] = sumR ? Math.round(total * ratioOf(n) / sumR) : 0; deposited[n] = 0; });
+  var deposited = {}, allowance = {}, extra = {};
+  var balRow = (F.balances || []).filter(function(b){ return b.month === ym; })[0];
+  var allowSrc = balRow && balRow.end != null && balRow.allowance ? balRow.allowance : (F.allowance || {});
+  M.forEach(function(n){ deposited[n] = 0; allowance[n] = allowSrc[n] || 0; extra[n] = 0; });
   var deps = F.deposits.filter(function(d){ return d.month === ym; });
   deps.forEach(function(d){ if (deposited[d.who] != null) deposited[d.who] += d.amount; });
-  return {lines:lines, total:total, paid:paid, unknown:unknown, target:target, deposited:deposited, deps:deps};
+  var extras = (F.extras || []).filter(function(x){ return x.month === ym; });
+  extras.forEach(function(x){ if (extra[x.who] != null) extra[x.who] += x.amount; });
+  var sum = function(o){ var t = 0; for (var k in o) t += o[k]; return t; };
+  var bal = (F.balances || []).filter(function(b){ return b.month === ym; })[0];
+  var prev = (F.balances || []).filter(function(b){ return b.month === shiftMonth(ym, -1); })[0];
+  var start = prev && prev.end != null ? prev.end : (bal && bal.start != null ? bal.start : null);
+  var end = bal && bal.end != null ? bal.end : null;
+  var depositTotal = sum(deposited), allowanceTotal = sum(allowance), extraTotal = sum(extra);
+  var living = (start != null && end != null) ? start + depositTotal - total - allowanceTotal - extraTotal - end : null;
+  return {month:ym, lines:lines, total:total, paid:paid, unknown:unknown, deposited:deposited, deps:deps, depositTotal:depositTotal,
+    allowance:allowance, allowanceTotal:allowanceTotal, extra:extra, extras:extras, extraTotal:extraTotal,
+    start:start, startFromPrev: !!(prev && prev.end != null), end:end, living:living, saved:(start != null && end != null) ? end - start : null};
 }
 function runFixed(fn, args, okMsg){
   setBusy(true);
@@ -507,30 +522,49 @@ function renderFixed(){
   if (!S.f) return;
   var ym = S.fxMonth, fx = fixedMonth(ym), M = S.m.members;
   $('fx-month').textContent = monthLabel(ym);
-  $('fx-hero').innerHTML = '<div class="label">' + monthLabel(ym) + 'の固定費</div>' +
-    '<div class="big num">' + yen(fx.total) + '</div>' +
-    '<div class="bar"><span style="width:' + pct(fx.paid, fx.total) + '%;background:var(--both)"></span></div>' +
-    '<div class="sub">引き落とし済み <b class="num">' + yen(fx.paid) + '</b>・これから <b class="num">' + yen(fx.total - fx.paid) + '</b>' + (fx.unknown ? '（金額未入力が' + fx.unknown + '件）' : '') + '</div>';
+  $('fx-hero').innerHTML = fx.living != null
+    ? '<div class="label">' + monthLabel(ym) + 'の生活費（残高から計算）</div><div class="big num' + (fx.living < 0 ? ' over' : '') + '">' + sYen(fx.living) + '</div>' +
+      '<div class="sub">食費・日用品など、固定費とお小遣い以外に使ったお金です' + (fx.unknown ? '（金額未入力の固定費が' + fx.unknown + '件あるので、その分も含まれています）' : '') + '</div>'
+    : '<div class="label">' + monthLabel(ym) + 'の生活費</div><div class="big num" style="font-size:24px">月末の残高を入れると出ます</div>' +
+      '<div class="sub">月末に通帳アプリの残高を1回入れるだけで、食費や日用品に使った額がわかります。</div>';
+  var row = function(k, v, cls, act){ return '<div class="lrow' + (cls ? ' ' + cls : '') + '"><span class="k">' + k + '</span>' + (act ? '<button class="est-btn num" type="button" data-action="open-bal">' + v + '</button>' : '<span class="v num">' + v + '</span>') + '</div>'; };
+  $('fx-ledger').innerHTML =
+    row('月初の残高' + (fx.startFromPrev ? '（先月末）' : ''), fx.start != null ? yen(fx.start) : '入れる', '', !fx.startFromPrev) +
+    row('＋ 給料・入金', yen(fx.depositTotal)) +
+    row('− 固定費', yen(fx.total)) +
+    row('− お小遣い', yen(fx.allowanceTotal)) +
+    (fx.extraTotal ? row('− 臨時のお小遣い', yen(fx.extraTotal)) : '') +
+    row('− 生活費（計算）', fx.living != null ? sYen(fx.living) : '—', 'calc') +
+    row('＝ 月末の残高', fx.end != null ? yen(fx.end) : '入れる', 'total', true) +
+    (fx.saved != null ? row('この月に増えたお金', (fx.saved >= 0 ? '＋' : '') + sYen(fx.saved)) : '');
   $('fx-people').innerHTML = M.map(function(n, i){
-    var t = fx.target[n], dpt = fx.deposited[n], left = t - dpt;
     return '<div class="person"><div class="who"><span class="dot" style="background:var(--m' + i + ')"></span>' + esc(n) + '</div>' +
-      '<div class="paid num"><small>入れる目安</small>' + yen(t) + '</div>' +
-      '<div class="mini"><span style="width:' + pct(dpt, t) + '%;background:var(--m' + i + ')"></span></div>' +
-      '<div class="left num">' + (t > 0 && left <= 0 ? '<span class="ok">入金済み ' + yen(dpt) + '</span>' : '入金済み ' + yen(dpt) + '・あと ' + yen(Math.max(0, left))) + '</div></div>';
+      '<div class="paid num"><small>' + monthLabel(ym) + 'に入れた額</small>' + yen(fx.deposited[n]) + '</div></div>';
   }).join('');
-  if (S.editRatio) {
-    $('fx-ratio').innerHTML = '負担の割合：' + M.map(function(n, i){ return esc(n) + ' <input type="number" inputmode="numeric" min="0" max="100" id="ratio-' + i + '" value="' + ratioOf(n) + '" aria-label="' + esc(n) + 'の割合">%'; }).join('　') +
-      ' <button class="small-btn" type="button" data-fx="save-ratio">保存</button><button class="small-btn" type="button" data-fx="cancel-ratio">戻す</button>';
-  } else {
-    $('fx-ratio').innerHTML = '負担の割合：' + M.map(function(n){ return esc(n) + ' ' + ratioOf(n) + '%'; }).join('・') + ' <button class="link-btn" type="button" data-fx="edit-ratio">変える</button>';
-  }
-  $('fx-deps').innerHTML = !fx.deps.length ? '<div class="empty">' + monthLabel(ym) + 'の入金はまだ記録されていません。</div>' :
+  $('fx-deps').innerHTML = !fx.deps.length ? '<div class="empty">給料が入ったら記録しましょう。</div>' :
     fx.deps.slice().sort(function(a, b){ return (b.date || '').localeCompare(a.date || ''); }).map(function(d){
       var c = S.confirmDep === d.id;
-      return '<div class="row"><div class="date num">' + esc(md(d.date)) + '</div><div class="main"><div class="title"><span class="chip m' + mIdx(d.who) + '">' + esc(d.who) + '</span> が入金</div>' + (d.memo ? '<div class="sub">' + esc(d.memo) + '</div>' : '') + '</div>' +
+      return '<div class="row"><div class="date num">' + esc(md(d.date)) + '</div><div class="main"><div class="title"><span class="chip m' + mIdx(d.who) + '">' + esc(d.who) + '</span> ' + esc(d.memo || '入金') + '</div></div>' +
         '<div class="amt num">' + yen(d.amount) + '</div>' +
         (c ? '<button class="small-btn danger" type="button" data-fx="del-dep" data-id="' + esc(d.id) + '">削除</button><button class="small-btn" type="button" data-fx="cancel">戻す</button>'
            : '<button class="icon-btn" type="button" aria-label="入金の記録を削除" data-fx="ask-del-dep" data-id="' + esc(d.id) + '">×</button>') + '</div>';
+    }).join('');
+  $('fx-allow').innerHTML = M.map(function(n, i){
+    return '<div class="person"><div class="who"><span class="dot" style="background:var(--m' + i + ')"></span>' + esc(n) + '</div>' +
+      '<div class="paid num"><small>' + monthLabel(ym) + 'のお小遣い</small>' + yen(fx.allowance[n] + fx.extra[n]) + '</div>' +
+      '<div class="left num">毎月 ' + yen(fx.allowance[n]) + (fx.extra[n] ? '＋臨時 ' + yen(fx.extra[n]) : '') + '</div></div>';
+  }).join('');
+  $('fx-allow-edit').innerHTML = S.editAllow
+    ? '毎月のお小遣い：' + M.map(function(n, i){ return esc(n) + ' <input type="number" inputmode="numeric" min="0" step="1000" id="allow-' + i + '" value="' + fx.allowance[n] + '" style="width:96px" aria-label="' + esc(n) + 'の毎月のお小遣い">'; }).join('　') +
+      ' <button class="small-btn" type="button" data-fx="save-allow">保存</button><button class="small-btn" type="button" data-fx="cancel-allow">戻す</button>'
+    : '<button class="link-btn" type="button" data-fx="edit-allow">毎月のお小遣いの額を変える</button>';
+  $('fx-extras').innerHTML = !fx.extras.length ? '<div class="empty">旅行や結婚式などで臨時のお小遣いを出したら、ここに記録します。</div>' :
+    fx.extras.map(function(x){
+      var c = S.confirmExtra === x.id;
+      return '<div class="row"><div class="date num">' + esc(md(x.date)) + '</div><div class="main"><div class="title"><span class="chip m' + mIdx(x.who) + '">' + esc(x.who) + '</span> ' + esc(x.reason || '臨時のお小遣い') + '</div></div>' +
+        '<div class="amt num">' + yen(x.amount) + '</div>' +
+        (c ? '<button class="small-btn danger" type="button" data-fx="del-extra" data-id="' + esc(x.id) + '">削除</button><button class="small-btn" type="button" data-fx="cancel-extra">戻す</button>'
+           : '<button class="icon-btn" type="button" aria-label="臨時のお小遣いを削除" data-fx="ask-del-extra" data-id="' + esc(x.id) + '">×</button>') + '</div>';
     }).join('');
   if (!fx.lines.length) {
     var quick = [['家賃','住居',false],['電気','光熱費',true],['ガス','光熱費',true],['水道','光熱費',true],['インターネット','通信',false],['スマホ','通信',false]];
@@ -550,6 +584,32 @@ function renderFixed(){
   }
   if (S.editRec) { var ri = $('rec-input'); if (ri) ri.focus(); }
 }
+function openBalForm(){
+  var fx = fixedMonth(S.fxMonth);
+  $('bal-form').hidden = false; $('bal-err').textContent = '';
+  $('bal-title').textContent = monthLabel(S.fxMonth) + 'の残高';
+  $('bal-start-field').hidden = fx.startFromPrev;
+  $('bal-start').value = fx.startFromPrev ? '' : (fx.start != null ? fx.start : '');
+  $('bal-end').value = fx.end != null ? fx.end : '';
+  $('bal-form').scrollIntoView({behavior:'smooth', block:'center'});
+}
+$('bal-form').addEventListener('submit', function(ev){
+  ev.preventDefault();
+  var fx = fixedMonth(S.fxMonth), end = $('bal-end').value.trim(), start = fx.startFromPrev ? '' : $('bal-start').value.trim();
+  if (end !== '' && isNaN(Number(end))) { $('bal-err').textContent = '残高は数字で入れてください。'; return; }
+  if (start !== '' && isNaN(Number(start))) { $('bal-err').textContent = '残高は数字で入れてください。'; return; }
+  $('bal-form').hidden = true;
+  var bal = (S.f.balances || []).filter(function(b){ return b.month === S.fxMonth; })[0];
+  if (fx.startFromPrev && bal && bal.start != null) start = bal.start;
+  runFixed('setBalance', [S.fxMonth, end, start], '残高を保存しました');
+});
+$('extra-form').addEventListener('submit', function(ev){
+  ev.preventDefault();
+  var amount = Math.round(Number($('ex2-amount').value));
+  if (!(amount > 0)) { $('ex2-err').textContent = '金額を1円以上で入れてください。'; return; }
+  $('extra-form').hidden = true;
+  runFixed('addExtra', [{who:S.exWho, amount:amount, date:$('ex2-date').value || S.f.today, month:S.fxMonth, reason:$('ex2-reason').value.trim()}], S.exWho + 'の臨時のお小遣い ' + yen(amount) + ' を記録しました');
+});
 function openItemForm(it, preset){
   S.editItem = it ? it.id : null;
   $('item-form').hidden = false; $('it-err').textContent = '';
@@ -565,11 +625,10 @@ function openItemForm(it, preset){
   $('item-form').scrollIntoView({behavior:'smooth', block:'center'});
 }
 function openDepForm(){
-  var fx = fixedMonth(S.fxMonth);
-  $('dep-form').hidden = false; $('dep-err').textContent = ''; $('dep-memo').value = '';
+  $('dep-form').hidden = false; $('dep-err').textContent = ''; $('dep-memo').value = ''; $('dep-amount').value = '';
   $('dep-date').value = S.f.today;
-  $('dep-amount').value = Math.max(0, (fx.target[S.depWho] || 0) - (fx.deposited[S.depWho] || 0)) || '';
   $('dep-form').scrollIntoView({behavior:'smooth', block:'center'});
+  setTimeout(function(){ $('dep-amount').focus(); }, 250);
 }
 $('item-form').addEventListener('submit', function(ev){
   ev.preventDefault();
@@ -941,11 +1000,12 @@ document.addEventListener('click', function(ev){
   }
 
   if (S.view === 'secret') touchVault();
+  var xw = ev.target.closest('[data-exwho]');
+  if (xw) { S.exWho = xw.dataset.exwho; Array.prototype.forEach.call($('ex2-who').querySelectorAll('button'), function(b){ b.setAttribute('aria-pressed', String(b.dataset.exwho === S.exWho)); }); return; }
   var dw = ev.target.closest('[data-depwho]');
   if (dw) {
     S.depWho = dw.dataset.depwho;
     Array.prototype.forEach.call($('dep-who').querySelectorAll('button'), function(b){ b.setAttribute('aria-pressed', String(b.dataset.depwho === S.depWho)); });
-    var fx0 = fixedMonth(S.fxMonth); $('dep-amount').value = Math.max(0, (fx0.target[S.depWho] || 0) - (fx0.deposited[S.depWho] || 0)) || '';
     return;
   }
   var mb = ev.target.closest('[data-month]');
@@ -1006,8 +1066,15 @@ document.addEventListener('click', function(ev){
     else if (a === 'ask-del-dep') { S.confirmDep = id; renderFixed(); }
     else if (a === 'cancel') { S.confirmDep = null; renderFixed(); }
     else if (a === 'del-dep') { S.confirmDep = null; runFixed('deleteDeposit', [id], '削除しました'); }
-    else if (a === 'edit-ratio') { S.editRatio = true; renderFixed(); }
-    else if (a === 'cancel-ratio') { S.editRatio = false; renderFixed(); }
+    else if (a === 'edit-allow') { S.editAllow = true; renderFixed(); }
+    else if (a === 'cancel-allow') { S.editAllow = false; renderFixed(); }
+    else if (a === 'save-allow') {
+      var al = {}; S.m.members.forEach(function(n, i){ al[n] = Number($('allow-' + i).value) || 0; });
+      S.editAllow = false; runFixed('setAllowance', [al], 'お小遣いの額を保存しました');
+    }
+    else if (a === 'ask-del-extra') { S.confirmExtra = id; renderFixed(); }
+    else if (a === 'cancel-extra') { S.confirmExtra = null; renderFixed(); }
+    else if (a === 'del-extra') { S.confirmExtra = null; runFixed('deleteExtra', [id], '削除しました'); }
     else if (a === 'save-ratio') {
       var ratio = {}; S.m.members.forEach(function(n, i){ ratio[n] = Number($('ratio-' + i).value) || 0; });
       S.editRatio = false; runFixed('setRatio', [ratio], '割合を保存しました');
@@ -1038,6 +1105,10 @@ document.addEventListener('click', function(ev){
   if (act === 'open-proj') { $('proj-form').hidden = false; $('pj-err').textContent = ''; $('pj-name').value = ''; $('pj-b0').value = ''; $('pj-b1').value = ''; $('pj-note').value = ''; setTimeout(function(){ $('pj-name').focus(); }, 50); }
   else if (act === 'close-proj') $('proj-form').hidden = true;
   else if (act === 'open-dep') openDepForm();
+  else if (act === 'open-bal') openBalForm();
+  else if (act === 'close-bal') $('bal-form').hidden = true;
+  else if (act === 'open-extra') { $('extra-form').hidden = false; $('ex2-err').textContent = ''; $('ex2-amount').value = ''; $('ex2-reason').value = ''; $('ex2-date').value = S.f.today; $('extra-form').scrollIntoView({behavior:'smooth', block:'center'}); }
+  else if (act === 'close-extra') $('extra-form').hidden = true;
   else if (act === 'close-dep') $('dep-form').hidden = true;
   else if (act === 'open-item') openItemForm(null);
   else if (act === 'close-item') $('item-form').hidden = true;

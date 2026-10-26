@@ -289,3 +289,12 @@ input,select.in{font:inherit;color:var(--ink);background:var(--bg);border:1px so
 .mini-list{display:flex;flex-direction:column;gap:3px;font-size:13px}
 .mini-list div{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tile.half .t-big{font-size:22px}
+
+/* joint account ledger */
+.ledger .lrow{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 14px;border-top:1px solid var(--line);font-size:14px}
+.ledger .lrow:first-child{border-top:none}
+.ledger .lrow .k{color:var(--muted)}
+.ledger .lrow .v{font-weight:700;white-space:nowrap}
+.ledger .lrow.calc{background:var(--fixed-bg);color:var(--fixed-ink)}
+.ledger .lrow.calc .k{color:inherit}
+.ledger .lrow.total .k{color:var(--ink);font-weight:500}

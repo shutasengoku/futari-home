@@ -205,13 +205,13 @@
     <div class="sheet-link" id="todo-sheet-link"></div>
   </div>
 
-  <!-- 固定費（共通口座） -->
+  <!-- 共通口座（固定費・お小遣い・生活費） -->
   <div class="view" id="v-fixed" hidden>
     <div class="bar-top">
       <div>
         <button class="back" type="button" data-go="money">← お金</button>
-        <h1>固定費</h1>
-        <div class="note">ふたりの共通口座から払うもの</div>
+        <h1>共通口座</h1>
+        <div class="note">給料が入って、固定費・お小遣い・生活費が出ていく口座</div>
       </div>
       <button class="refresh" type="button" data-refresh="fixed">更新</button>
     </div>
@@ -221,19 +221,26 @@
       <button type="button" class="icon-btn" data-month="1" aria-label="次の月">›</button>
     </div>
     <div class="hero" id="fx-hero"></div>
+    <div class="list ledger" id="fx-ledger"></div>
+    <form class="form" id="bal-form" hidden novalidate>
+      <div class="ftitle" id="bal-title">残高を入れる</div>
+      <div class="field" id="bal-start-field"><label for="bal-start">月初の残高（円）</label><input id="bal-start" type="number" inputmode="numeric" step="1"></div>
+      <div class="field"><label for="bal-end">月末の残高（円）</label><input id="bal-end" type="number" inputmode="numeric" step="1" placeholder="通帳アプリの残高"></div>
+      <div class="err" id="bal-err"></div>
+      <div class="actions"><button type="button" class="btn ghost" data-action="close-bal">やめる</button><button type="submit" class="btn">保存する</button></div>
+    </form>
 
     <section>
-      <div class="sec-head"><h2>共通口座への入金</h2><button class="btn" type="button" data-action="open-dep">＋ 入金を記録</button></div>
+      <div class="sec-head"><h2>給料・入金</h2><button class="btn" type="button" data-action="open-dep">＋ 記録する</button></div>
       <div class="people" id="fx-people"></div>
-      <div class="ratio-line" id="fx-ratio"></div>
       <form class="form" id="dep-form" hidden novalidate>
-        <div class="ftitle">入金を記録</div>
-        <div class="field"><span class="lab">入金した人</span><div class="seg" id="dep-who"></div></div>
+        <div class="ftitle">給料・入金を記録</div>
+        <div class="field"><span class="lab">だれの</span><div class="seg" id="dep-who"></div></div>
         <div class="grid2">
           <div class="field"><label for="dep-amount">金額（円）</label><input id="dep-amount" type="number" inputmode="numeric" min="1" step="1"></div>
           <div class="field"><label for="dep-date">日付</label><input id="dep-date" type="date"></div>
         </div>
-        <div class="field"><label for="dep-memo">メモ（任意）</label><input id="dep-memo" maxlength="100"></div>
+        <div class="field"><label for="dep-memo">メモ（任意）</label><input id="dep-memo" maxlength="100" placeholder="例：10月分の給料、ボーナス"></div>
         <div class="err" id="dep-err"></div>
         <div class="actions"><button type="button" class="btn ghost" data-action="close-dep">やめる</button><button type="submit" class="btn">記録する</button></div>
       </form>
@@ -241,7 +248,25 @@
     </section>
 
     <section>
-      <div class="sec-head"><h2>今月の引き落とし</h2><button class="btn" type="button" data-action="open-item">＋ 項目を追加</button></div>
+      <div class="sec-head"><h2>お小遣い</h2><button class="btn" type="button" data-action="open-extra">＋ 臨時のお小遣い</button></div>
+      <div class="people" id="fx-allow"></div>
+      <div class="ratio-line" id="fx-allow-edit"></div>
+      <form class="form" id="extra-form" hidden novalidate>
+        <div class="ftitle">臨時のお小遣い</div>
+        <div class="field"><span class="lab">だれに</span><div class="seg" id="ex2-who"></div></div>
+        <div class="grid2">
+          <div class="field"><label for="ex2-amount">金額（円）</label><input id="ex2-amount" type="number" inputmode="numeric" min="1" step="1"></div>
+          <div class="field"><label for="ex2-date">日付</label><input id="ex2-date" type="date"></div>
+        </div>
+        <div class="field"><label for="ex2-reason">理由</label><input id="ex2-reason" maxlength="60" placeholder="例：友達と旅行、〇〇の結婚式"></div>
+        <div class="err" id="ex2-err"></div>
+        <div class="actions"><button type="button" class="btn ghost" data-action="close-extra">やめる</button><button type="submit" class="btn">記録する</button></div>
+      </form>
+      <div class="list" id="fx-extras"></div>
+    </section>
+
+    <section>
+      <div class="sec-head"><h2>固定費</h2><button class="btn" type="button" data-action="open-item">＋ 項目を追加</button></div>
       <form class="form" id="item-form" hidden novalidate>
         <div class="ftitle" id="item-form-title">固定費の項目を追加</div>
         <div class="field"><label for="it-name">項目</label><input id="it-name" maxlength="40" placeholder="例：家賃、電気、Netflix"></div>
