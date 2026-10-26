@@ -52,11 +52,12 @@
       <input type="file" id="photo-input" accept="image/*" hidden>
     </div>
     <div class="tiles">
-      <button class="tile wide c-money" type="button" data-go="money" id="tile-money"></button>
+      <button class="tile half c-money" type="button" data-go="money" id="tile-money"></button>
+      <button class="tile half c-fixed" type="button" data-go="fixed" id="tile-fixed"></button>
       <button class="tile wide c-todo" type="button" data-go="todo" id="tile-todo"></button>
-      <a class="tile small c-docs" id="tile-docs" target="_blank" rel="noopener"><span class="t-name">書類</span><span class="t-sub">契約書・保証書など</span><span class="t-go">ドライブで開く ↗</span></a>
-      <a class="tile small c-photos" id="tile-photos" target="_blank" rel="noopener"><span class="t-name">写真</span><span class="t-sub">思い出の写真</span><span class="t-go">ドライブで開く ↗</span></a>
-      <div class="tile small c-secret"><span class="t-name">機密</span><span class="t-sub">パスワードなど</span><span class="t-go">準備中</span></div>
+      <button class="tile small c-docs" type="button" data-go="docs"><span class="t-name">書類</span><span class="t-sub">契約書・保証書など</span></button>
+      <button class="tile small c-photos" type="button" data-go="photos"><span class="t-name">写真</span><span class="t-sub">思い出のアルバム</span></button>
+      <button class="tile small c-secret" type="button" data-go="secret"><span class="t-name">機密</span><span class="t-sub">パスワードなど</span><span class="t-go" id="tile-secret-state">🔒 ロック中</span></button>
     </div>
     <div class="home-foot">
       <a id="root-link" target="_blank" rel="noopener">ドライブの「ふたりのホーム」を開く</a>
@@ -71,9 +72,21 @@
         <button class="back" type="button" data-go="home">← ホーム</button>
         <select id="project" aria-label="プロジェクト"></select>
         <div class="note" id="proj-note"></div>
+        <button class="link-btn" type="button" data-action="open-proj">＋ 新しいプロジェクト（旅行・買い替えなど）</button>
       </div>
       <button class="refresh" type="button" data-refresh="money">更新</button>
     </div>
+    <form class="form" id="proj-form" hidden novalidate>
+      <div class="ftitle">新しいプロジェクト</div>
+      <div class="field"><label for="pj-name">名前</label><input id="pj-name" maxlength="40" placeholder="例：2027年 夏の旅行"></div>
+      <div class="grid2">
+        <div class="field"><label for="pj-b0" id="pj-b0-label">予算</label><input id="pj-b0" type="number" inputmode="numeric" min="0" step="1" placeholder="0"></div>
+        <div class="field"><label for="pj-b1" id="pj-b1-label">予算</label><input id="pj-b1" type="number" inputmode="numeric" min="0" step="1" placeholder="0"></div>
+      </div>
+      <div class="field"><label for="pj-note">メモ（任意）</label><input id="pj-note" maxlength="100" placeholder="例：沖縄3泊、ホテル代込み"></div>
+      <div class="err" id="pj-err"></div>
+      <div class="actions"><button type="button" class="btn ghost" data-action="close-proj">やめる</button><button type="submit" class="btn">作る</button></div>
+    </form>
 
     <div class="hero" id="hero"></div>
     <div>
@@ -166,6 +179,149 @@
     </div>
     <div class="sheet-link" id="todo-sheet-link"></div>
   </div>
+
+  <!-- 固定費（共通口座） -->
+  <div class="view" id="v-fixed" hidden>
+    <div class="bar-top">
+      <div>
+        <button class="back" type="button" data-go="home">← ホーム</button>
+        <h1>固定費</h1>
+        <div class="note">ふたりの共通口座から払うもの</div>
+      </div>
+      <button class="refresh" type="button" data-refresh="fixed">更新</button>
+    </div>
+    <div class="month-nav">
+      <button type="button" class="icon-btn" data-month="-1" aria-label="前の月">‹</button>
+      <div class="month-label num" id="fx-month"></div>
+      <button type="button" class="icon-btn" data-month="1" aria-label="次の月">›</button>
+    </div>
+    <div class="hero" id="fx-hero"></div>
+
+    <section>
+      <div class="sec-head"><h2>共通口座への入金</h2><button class="btn" type="button" data-action="open-dep">＋ 入金を記録</button></div>
+      <div class="people" id="fx-people"></div>
+      <div class="ratio-line" id="fx-ratio"></div>
+      <form class="form" id="dep-form" hidden novalidate>
+        <div class="ftitle">入金を記録</div>
+        <div class="field"><span class="lab">入金した人</span><div class="seg" id="dep-who"></div></div>
+        <div class="grid2">
+          <div class="field"><label for="dep-amount">金額（円）</label><input id="dep-amount" type="number" inputmode="numeric" min="1" step="1"></div>
+          <div class="field"><label for="dep-date">日付</label><input id="dep-date" type="date"></div>
+        </div>
+        <div class="field"><label for="dep-memo">メモ（任意）</label><input id="dep-memo" maxlength="100"></div>
+        <div class="err" id="dep-err"></div>
+        <div class="actions"><button type="button" class="btn ghost" data-action="close-dep">やめる</button><button type="submit" class="btn">記録する</button></div>
+      </form>
+      <div class="list" id="fx-deps"></div>
+    </section>
+
+    <section>
+      <div class="sec-head"><h2>今月の引き落とし</h2><button class="btn" type="button" data-action="open-item">＋ 項目を追加</button></div>
+      <form class="form" id="item-form" hidden novalidate>
+        <div class="ftitle" id="item-form-title">固定費の項目を追加</div>
+        <div class="field"><label for="it-name">項目</label><input id="it-name" maxlength="40" placeholder="例：家賃、電気、Netflix"></div>
+        <div class="grid2">
+          <div class="field"><label for="it-amount">金額の目安（円）</label><input id="it-amount" type="number" inputmode="numeric" min="0" step="1" placeholder="0"></div>
+          <div class="field"><label for="it-day">引き落とし日</label><input id="it-day" type="number" inputmode="numeric" min="1" max="31" step="1" placeholder="例：27"></div>
+        </div>
+        <div class="field"><label for="it-cat">カテゴリ</label><select class="in" id="it-cat"></select></div>
+        <label class="check-line"><input type="checkbox" id="it-var"> 毎月金額が変わる（電気・ガス・水道など）</label>
+        <div class="field"><label for="it-memo">メモ（任意）</label><input id="it-memo" maxlength="100" placeholder="例：〇〇電力、口座振替"></div>
+        <div class="err" id="it-err"></div>
+        <div class="actions">
+          <button type="button" class="btn ghost danger-text" id="it-stop" data-action="stop-item" hidden>この項目をやめる</button>
+          <button type="button" class="btn ghost" data-action="close-item">やめる</button><button type="submit" class="btn" id="it-submit">追加する</button>
+        </div>
+      </form>
+      <div class="list" id="fx-items"></div>
+    </section>
+    <div class="sheet-link" id="fixed-sheet-link"></div>
+  </div>
+
+  <!-- 書類 -->
+  <div class="view" id="v-docs" hidden>
+    <div class="bar-top">
+      <div>
+        <button class="back" type="button" data-go="home">← ホーム</button>
+        <h1>書類</h1>
+      </div>
+      <button class="refresh" type="button" data-refresh="docs">更新</button>
+    </div>
+    <div class="row-actions">
+      <button class="btn" type="button" data-action="open-doc">＋ 書類を追加</button>
+      <button class="btn ghost" type="button" data-action="open-docfolder">＋ 分類を作る</button>
+    </div>
+    <form class="form" id="doc-form" hidden novalidate>
+      <div class="ftitle">書類を追加</div>
+      <div class="field"><label for="doc-cat">分類</label><select class="in" id="doc-cat"></select></div>
+      <div class="field"><label for="doc-file">ファイル（写真かPDF）</label><input id="doc-file" type="file" accept="image/*,application/pdf" multiple></div>
+      <div class="field"><label for="doc-name">名前（任意・1つだけ選んだとき）</label><input id="doc-name" maxlength="60" placeholder="例：賃貸借契約書"></div>
+      <div class="err" id="doc-err"></div>
+      <div class="actions"><button type="button" class="btn ghost" data-action="close-doc">やめる</button><button type="submit" class="btn">保存する</button></div>
+    </form>
+    <form class="form" id="docfolder-form" hidden novalidate>
+      <div class="ftitle">分類を作る</div>
+      <div class="field"><label for="docfolder-name">名前</label><input id="docfolder-name" maxlength="40" placeholder="例：車・免許"></div>
+      <div class="err" id="docfolder-err"></div>
+      <div class="actions"><button type="button" class="btn ghost" data-action="close-docfolder">やめる</button><button type="submit" class="btn">作る</button></div>
+    </form>
+    <div id="docs-list" style="display:flex;flex-direction:column;gap:16px"></div>
+  </div>
+
+  <!-- 写真：アルバム一覧 -->
+  <div class="view" id="v-photos" hidden>
+    <div class="bar-top">
+      <div>
+        <button class="back" type="button" data-go="home">← ホーム</button>
+        <h1>写真</h1>
+      </div>
+      <button class="refresh" type="button" data-refresh="photos">更新</button>
+    </div>
+    <div class="row-actions"><button class="btn" type="button" data-action="open-album-form">＋ アルバムを作る</button></div>
+    <form class="form" id="album-form" hidden novalidate>
+      <div class="ftitle">アルバムを作る</div>
+      <div class="field"><label for="album-name">名前</label><input id="album-name" maxlength="40" placeholder="例：2026-10 引越し"></div>
+      <div class="err" id="album-err"></div>
+      <div class="actions"><button type="button" class="btn ghost" data-action="close-album-form">やめる</button><button type="submit" class="btn">作る</button></div>
+    </form>
+    <div class="albums" id="albums"></div>
+  </div>
+
+  <!-- 写真：アルバムの中 -->
+  <div class="view" id="v-album" hidden>
+    <div class="bar-top">
+      <div>
+        <button class="back" type="button" data-go="photos">← アルバム</button>
+        <h1 id="album-title">アルバム</h1>
+        <div class="note" id="album-count"></div>
+      </div>
+      <button class="btn" type="button" data-action="add-photos">＋ 写真</button>
+    </div>
+    <input type="file" id="album-input" accept="image/*" multiple hidden>
+    <div class="photo-grid" id="photo-grid"></div>
+  </div>
+
+  <!-- 機密 -->
+  <div class="view" id="v-secret" hidden>
+    <div class="bar-top">
+      <div>
+        <button class="back" type="button" data-go="home">← ホーム</button>
+        <h1>機密</h1>
+      </div>
+      <button class="refresh" type="button" id="sc-lock" hidden>ロックする</button>
+    </div>
+    <div id="sc-body"></div>
+  </div>
+</div>
+
+<!-- ファイル・写真を見る画面 -->
+<div class="viewer" id="viewer" hidden>
+  <div class="viewer-bar">
+    <div class="viewer-name" id="viewer-name"></div>
+    <button type="button" class="viewer-close" data-action="close-viewer" aria-label="閉じる">×</button>
+  </div>
+  <div class="viewer-body" id="viewer-body"></div>
+  <div class="viewer-actions" id="viewer-actions"></div>
 </div>
 <div class="toast" id="toast" hidden></div>
 

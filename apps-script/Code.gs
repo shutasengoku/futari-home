@@ -14,6 +14,8 @@ const CLIENT_ID = '264124983411-o94hvp7221a45f6c59trdv628nt97flo.apps.googleuser
 
 const MONEY_ID = '1lsNoI837NrxVJTpXI92RdQQLnfjNYcbPqSqEUOAWd6M';   // お金/ふたりのお金 台帳
 const TODO_ID  = '1551Q4cmKDR548uY1oc_eaK-gOAd8cml3658_1ez3uU0';   // やること/ふたりのやること
+const FIXED_ID = '105jNfd5tCU2Sj_EIoxdajUWtUfKB5PBQZ4FQHfJZSig';   // お金/ふたりの固定費
+const VAULT_NAME = 'ふたりの機密（暗号化済み）.json';                // 機密フォルダに作られる。中身は暗号化された文字だけ
 const FOLDERS = {
   root:       '1wB1vA_-J3nNG4dHAbefkivivaZoTHi6f',
   money:      '1f6Awrp3VWKHOUDT5DAwiC1LqvUMxOsUe',
@@ -69,7 +71,33 @@ const ACTIONS = {
   addTodo:         (me, a) => addTodo_(a[0]),
   setTodoDone:     (me, a) => setTodoDone_(a[0], a[1]),
   deleteTodo:      (me, a) => deleteTodo_(a[0]),
-  logout:          (me)    => logout_(me)
+  logout:          (me)    => logout_(me),
+  // お金：プロジェクト
+  addProject:      (me, a) => addProject_(me, a[0]),
+  // 固定費（共通口座）
+  getFixed:        (me)    => fixedData_(me),
+  addFixedItem:    (me, a) => addFixedItem_(me, a[0]),
+  updateFixedItem: (me, a) => updateFixedItem_(me, a[0], a[1]),
+  setFixedRecord:  (me, a) => setFixedRecord_(me, a[0], a[1], a[2], a[3]),
+  addDeposit:      (me, a) => addDeposit_(me, a[0]),
+  deleteDeposit:   (me, a) => deleteDeposit_(me, a[0]),
+  setRatio:        (me, a) => setRatio_(me, a[0]),
+  // 書類
+  getDocs:         (me)    => docsData_(),
+  uploadDoc:       (me, a) => uploadDoc_(a[0], a[1], a[2]),
+  addDocFolder:    (me, a) => addFolder_(FOLDERS.docs, a[0], docsData_),
+  // 写真
+  getAlbums:       (me)    => albumsData_(),
+  getAlbum:        (me, a) => albumData_(a[0]),
+  addAlbum:        (me, a) => addFolder_(FOLDERS.photos, a[0], albumsData_),
+  uploadPhoto:     (me, a) => uploadPhoto_(a[0], a[1], a[2]),
+  setHomeFromPhoto:(me, a) => setHomeFromPhoto_(a[0]),
+  // 共通
+  getFileData:     (me, a) => fileData_(a[0]),
+  trashFile:       (me, a) => trashFile_(a[0]),
+  // 機密（暗号化された文字をそのまま預かるだけ）
+  getVault:        (me)    => getVault_(),
+  saveVault:       (me, a) => saveVault_(me, a[0], a[1])
 };
 
 /* =========================================================
@@ -139,7 +167,7 @@ function getAll_(me) {
   Object.keys(FOLDERS).forEach(k => folders[k] = 'https://drive.google.com/drive/folders/' + FOLDERS[k]);
   return {
     me: { email: me.email, member: me.member, members: me.members },
-    money: moneyData_(me), todos: todoData_(), folders: folders
+    money: moneyData_(me), todos: todoData_(), fixed: fixedData_(me), folders: folders
   };
 }
 
@@ -322,6 +350,318 @@ function deleteTodo_(id) {
 }
 
 /* =========================================================
+ * お金：プロジェクトを追加（旅行・家具の買い替え など）
+ * ======================================================= */
+
+function addProject_(me, p) {
+  const name = clean_(p && p.name, 40);
+  if (!name) throw err_('プロジェクト名を入れてください。');
+  if (me.conf.projects.some(x => x.name === name)) throw err_('同じ名前のプロジェクトがあります。');
+  const b0 = Math.round(Number(p.budget0) || 0), b1 = Math.round(Number(p.budget1) || 0);
+  if (b0 < 0 || b1 < 0) throw err_('予算は0以上で入れてください。');
+  return moneyWrite_(me, ss => {
+    const sh = ss.getSheetByName(SH.conf);
+    const col = sh.getRange(2, 1, Math.max(sh.getLastRow(), 2), 1).getValues();
+    let row = col.findIndex(r => String(r[0]).trim() === '') + 2;
+    if (row < 2) row = col.length + 2;
+    sh.getRange(row, 1, 1, 5).setValues([[name, '進行中', Utilities.formatDate(new Date(), TZ, 'yyyy/MM/dd'), b0, b1]]);
+    sh.getRange(row, 7).setValue(clean_(p.note, 100));
+  });
+}
+
+/* =========================================================
+ * 固定費（共通口座）
+ * ======================================================= */
+
+function fixed_() { return SpreadsheetApp.openById(FIXED_ID); }
+
+function fixedData_(me) {
+  const ss = fixed_();
+  const items = readRows_(ss.getSheetByName('項目'), 8, 7, r => r[0] !== '').map(r => ({
+    id: String(r[7]), name: String(r[0]), category: String(r[1] || ''), amount: Number(r[2]) || 0,
+    day: r[3] === '' ? '' : Number(r[3]) || '', variable: r[4] === true, active: String(r[5]) !== 'やめた', memo: String(r[6] || '')
+  }));
+  const records = readRows_(ss.getSheetByName('記録'), 7, 6, r => r[0] !== '').map(r => ({
+    id: String(r[6]), month: monthStr_(r[0]), itemId: String(r[1]), item: String(r[2]),
+    amount: Number(r[3]) || 0, status: String(r[4] || '予定'), memo: String(r[5] || '')
+  }));
+  const deposits = readRows_(ss.getSheetByName('入金'), 6, 5, r => r[3] !== '').map(r => ({
+    id: String(r[5]), date: fmtDate_(r[0]), month: monthStr_(r[1]) || monthStr_(r[0]), who: String(r[2]),
+    amount: Number(r[3]) || 0, memo: String(r[4] || '')
+  }));
+  const conf = ss.getSheetByName('設定').getRange(2, 1, 29, 4).getValues();
+  const ratio = {};
+  conf.forEach(r => { if (String(r[0]).trim()) ratio[String(r[0]).trim()] = Number(r[1]) || 0; });
+  const categories = conf.map(r => String(r[3]).trim()).filter(Boolean);
+  return {
+    items: items, records: records, deposits: deposits, ratio: ratio, categories: categories,
+    thisMonth: Utilities.formatDate(new Date(), TZ, 'yyyy-MM'),
+    today: Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd'), sheetUrl: ss.getUrl()
+  };
+}
+
+function addFixedItem_(me, it) {
+  const name = clean_(it && it.name, 40);
+  if (!name) throw err_('項目名を入れてください。');
+  const amount = Math.round(Number(it.amount) || 0);
+  if (amount < 0) throw err_('金額は0以上で入れてください。');
+  const day = it.day === '' || it.day == null ? '' : Math.min(31, Math.max(1, Math.round(Number(it.day)) || 1));
+  return fixedWrite_(me, ss => {
+    ss.getSheetByName('項目').appendRow([name, clean_(it.category, 20), amount, day, !!it.variable, '使う', clean_(it.memo, 100), newId_()]);
+  });
+}
+
+function updateFixedItem_(me, id, f) {
+  return fixedWrite_(me, ss => {
+    const sh = ss.getSheetByName('項目');
+    const row = findRow_(sh, 7, id);
+    if (row < 0) throw err_('この項目は見つかりませんでした。画面を更新してください。');
+    if ('name' in f) { const n = clean_(f.name, 40); if (!n) throw err_('項目名を入れてください。'); sh.getRange(row, 1).setValue(n); }
+    if ('category' in f) sh.getRange(row, 2).setValue(clean_(f.category, 20));
+    if ('amount' in f) sh.getRange(row, 3).setValue(Math.max(0, Math.round(Number(f.amount) || 0)));
+    if ('day' in f) sh.getRange(row, 4).setValue(f.day === '' ? '' : Math.min(31, Math.max(1, Math.round(Number(f.day)) || 1)));
+    if ('variable' in f) sh.getRange(row, 5).setValue(!!f.variable);
+    if ('active' in f) sh.getRange(row, 6).setValue(f.active ? '使う' : 'やめた');
+    if ('memo' in f) sh.getRange(row, 7).setValue(clean_(f.memo, 100));
+  });
+}
+
+/** その月のその項目の金額・状態を記録（なければ追加） */
+function setFixedRecord_(me, month, itemId, amount, status) {
+  if (!/^\d{4}-\d{2}$/.test(String(month))) throw err_('月の指定が正しくありません。');
+  const amt = Math.max(0, Math.round(Number(amount) || 0));
+  const st = status === '引き落とし済み' ? '引き落とし済み' : '予定';
+  return fixedWrite_(me, ss => {
+    const items = ss.getSheetByName('項目');
+    const irow = findRow_(items, 7, itemId);
+    if (irow < 0) throw err_('この項目は見つかりませんでした。画面を更新してください。');
+    const itemName = items.getRange(irow, 1).getValue();
+    const sh = ss.getSheetByName('記録');
+    const last = sh.getLastRow();
+    let row = -1;
+    if (last >= 2) {
+      const v = sh.getRange(2, 1, last - 1, 2).getValues();
+      for (let i = 0; i < v.length; i++) if (monthStr_(v[i][0]) === month && String(v[i][1]) === String(itemId)) { row = i + 2; break; }
+    }
+    if (row > 0) sh.getRange(row, 3, 1, 3).setValues([[itemName, amt, st]]);
+    else sh.appendRow(["'" + month, itemId, itemName, amt, st, '', newId_()]);
+  });
+}
+
+function addDeposit_(me, d) {
+  const amount = Math.round(Number(d && d.amount));
+  if (!(amount > 0)) throw err_('金額を1円以上で入れてください。');
+  if (!/^\d{4}-\d{2}$/.test(String(d.month))) throw err_('月の指定が正しくありません。');
+  return fixedWrite_(me, ss => {
+    const date = fmtDate_(d.date) || Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
+    ss.getSheetByName('入金').appendRow([date.replace(/-/g, '/'), "'" + d.month, clean_(d.who, 20), amount, clean_(d.memo, 100), newId_()]);
+  });
+}
+
+function deleteDeposit_(me, id) {
+  return fixedWrite_(me, ss => {
+    const sh = ss.getSheetByName('入金');
+    const row = findRow_(sh, 5, id);
+    if (row > 0) sh.deleteRow(row);
+  });
+}
+
+function setRatio_(me, ratio) {
+  return fixedWrite_(me, ss => {
+    const sh = ss.getSheetByName('設定');
+    const v = sh.getRange(2, 1, 10, 2).getValues();
+    v.forEach((r, i) => {
+      const n = String(r[0]).trim();
+      if (n && ratio && n in ratio) sh.getRange(i + 2, 2).setValue(Math.max(0, Math.min(100, Math.round(Number(ratio[n]) || 0))));
+    });
+  });
+}
+
+function fixedWrite_(me, fn) {
+  const ss = fixed_();
+  lock_(() => fn(ss));
+  return fixedData_(me);
+}
+
+function monthStr_(v) {
+  if (v instanceof Date) return Utilities.formatDate(v, TZ, 'yyyy-MM');
+  const m = String(v || '').match(/(\d{4})[-\/](\d{1,2})/);
+  return m ? m[1] + '-' + ('0' + m[2]).slice(-2) : '';
+}
+
+/* =========================================================
+ * 書類・写真（ドライブのフォルダ）
+ * ======================================================= */
+
+function fileInfo_(f) {
+  const mime = f.getMimeType();
+  return {
+    id: f.getId(), name: f.getName(), mime: mime, size: f.getSize(),
+    updated: Utilities.formatDate(f.getLastUpdated(), TZ, 'yyyy-MM-dd'),
+    kind: /^image\//.test(mime) ? 'image' : (mime === 'application/pdf' ? 'pdf' : 'other'),
+    url: f.getUrl()
+  };
+}
+
+function listFiles_(folder) {
+  const out = [], it = folder.getFiles();
+  while (it.hasNext()) out.push(it.next());
+  return out.sort((a, b) => b.getDateCreated() - a.getDateCreated());
+}
+
+function docsData_() {
+  const root = DriveApp.getFolderById(FOLDERS.docs);
+  const cats = [], it = root.getFolders();
+  while (it.hasNext()) {
+    const f = it.next();
+    cats.push({ id: f.getId(), name: f.getName(), files: listFiles_(f).map(fileInfo_) });
+  }
+  cats.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+  const loose = listFiles_(root).map(fileInfo_);
+  if (loose.length) cats.push({ id: root.getId(), name: '未分類', files: loose });
+  return { categories: cats, folderUrl: root.getUrl() };
+}
+
+function uploadDoc_(folderId, name, dataUrl) {
+  const folder = DriveApp.getFolderById(folderId);
+  if (folderId !== FOLDERS.docs && !isUnder_(folder, [FOLDERS.docs])) throw err_('このフォルダには保存できません。');
+  const blob = blobFromDataUrl_(dataUrl, name, /^(image\/(jpeg|png|webp|heic|heif)|application\/pdf)$/, 15);
+  folder.createFile(blob);
+  return docsData_();
+}
+
+function addFolder_(parentId, name, after) {
+  const n = clean_(name, 40).replace(/^'/, '').replace(/[\\\/:*?"<>|]/g, '');
+  if (!n) throw err_('名前を入れてください。');
+  const parent = DriveApp.getFolderById(parentId);
+  if (parent.getFoldersByName(n).hasNext()) throw err_('同じ名前がすでにあります。');
+  parent.createFolder(n);
+  return after();
+}
+
+function albumsData_() {
+  const root = DriveApp.getFolderById(FOLDERS.photos);
+  const albums = [], it = root.getFolders();
+  while (it.hasNext()) {
+    const f = it.next();
+    if (f.getId() === FOLDERS.homePhotos) continue;
+    const imgs = listFiles_(f).filter(x => /^image\//.test(x.getMimeType()));
+    albums.push({ id: f.getId(), name: f.getName(), count: imgs.length, cover: imgs.length ? thumb_(imgs[0]) : null });
+  }
+  albums.sort((a, b) => b.name.localeCompare(a.name, 'ja'));
+  return { albums: albums, folderUrl: root.getUrl() };
+}
+
+function albumData_(id) {
+  const folder = DriveApp.getFolderById(id);
+  if (!isUnder_(folder, [FOLDERS.photos]) || id === FOLDERS.homePhotos) throw err_('このアルバムは開けません。');
+  const imgs = listFiles_(folder).filter(x => /^image\//.test(x.getMimeType())).slice(0, 120);
+  return {
+    id: id, name: folder.getName(), url: folder.getUrl(),
+    photos: imgs.map(f => ({ id: f.getId(), name: f.getName(), date: Utilities.formatDate(f.getDateCreated(), TZ, 'yyyy-MM-dd'), thumb: thumb_(f) }))
+  };
+}
+
+function uploadPhoto_(albumId, dataUrl, name) {
+  const folder = DriveApp.getFolderById(albumId);
+  if (!isUnder_(folder, [FOLDERS.photos]) || albumId === FOLDERS.homePhotos) throw err_('このアルバムには保存できません。');
+  const f = folder.createFile(blobFromDataUrl_(dataUrl, name, /^image\/(jpeg|png|webp)$/, 4));
+  return { id: f.getId(), name: f.getName(), date: Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd'), thumb: thumb_(f) };
+}
+
+function setHomeFromPhoto_(id) {
+  const f = DriveApp.getFileById(id);
+  if (!isUnder_(f, [FOLDERS.photos])) throw err_('この写真は使えません。');
+  if (f.getSize() > PHOTO_MAX_BYTES) throw err_('写真が大きすぎてホームに使えません。');
+  f.makeCopy('home-' + f.getName(), DriveApp.getFolderById(FOLDERS.homePhotos));
+  return true;
+}
+
+function fileData_(id) {
+  const f = DriveApp.getFileById(id);
+  if (!isUnder_(f, [FOLDERS.docs, FOLDERS.photos])) throw err_('このファイルは開けません。');
+  if (f.getSize() > 15 * 1024 * 1024) throw err_('ファイルが大きすぎてアプリでは開けません。ドライブで開いてください。', 'too_large');
+  const b = f.getBlob();
+  return { name: f.getName(), mime: b.getContentType(), dataUrl: 'data:' + b.getContentType() + ';base64,' + Utilities.base64Encode(b.getBytes()), url: f.getUrl() };
+}
+
+function trashFile_(id) {
+  const f = DriveApp.getFileById(id);
+  if (!isUnder_(f, [FOLDERS.docs, FOLDERS.photos])) throw err_('このファイルは削除できません。');
+  f.setTrashed(true);   // ドライブのゴミ箱へ（30日以内なら戻せる）
+  return true;
+}
+
+function thumb_(f) {
+  try {
+    const b = f.getThumbnail();
+    if (b) return 'data:' + (b.getContentType() || 'image/png') + ';base64,' + Utilities.base64Encode(b.getBytes());
+  } catch (e) {}
+  if (f.getSize() <= 400 * 1024 && /^image\//.test(f.getMimeType())) {
+    const b = f.getBlob();
+    return 'data:' + b.getContentType() + ';base64,' + Utilities.base64Encode(b.getBytes());
+  }
+  return null;
+}
+
+/** item（ファイルかフォルダ）が roots のどれかの下にあるか */
+function isUnder_(item, roots) {
+  let level = [item];
+  for (let depth = 0; depth < 6 && level.length; depth++) {
+    const next = [];
+    level.forEach(x => {
+      const it = x.getParents();
+      while (it.hasNext()) next.push(it.next());
+    });
+    if (next.some(p => roots.indexOf(p.getId()) >= 0)) return true;
+    level = next;
+  }
+  return false;
+}
+
+function blobFromDataUrl_(dataUrl, name, mimeOk, maxMb) {
+  const m = String(dataUrl || '').match(/^data:([^;,]+);base64,(.+)$/);
+  if (!m || !mimeOk.test(m[1])) throw err_('このファイルの種類は保存できません。写真かPDFを選んでください。');
+  const bytes = Utilities.base64Decode(m[2]);
+  if (bytes.length > maxMb * 1024 * 1024) throw err_('ファイルが大きすぎます（' + maxMb + 'MBまで）。');
+  const n = String(name || 'file').slice(0, 80).replace(/[\\\/:*?"<>|]/g, '');
+  return Utilities.newBlob(bytes, m[1], n);
+}
+
+/* =========================================================
+ * 機密（暗号化はスマホの中で行い、ここでは暗号化済みの文字を預かるだけ）
+ * ======================================================= */
+
+function vaultFile_() {
+  const it = DriveApp.getFolderById(FOLDERS.secret).getFilesByName(VAULT_NAME);
+  return it.hasNext() ? it.next() : null;
+}
+
+function getVault_() {
+  const f = vaultFile_();
+  if (!f) return { exists: false, version: 0 };
+  return { exists: true, text: f.getBlob().getDataAsString(), version: Number(f.getDescription() || 0) };
+}
+
+function saveVault_(me, text, baseVersion) {
+  let obj;
+  try { obj = JSON.parse(text); } catch (e) { throw err_('保存するデータが正しくありません。'); }
+  if (!obj || !obj.salt || !obj.iv || !obj.ct) throw err_('保存するデータが正しくありません。');
+  if (String(text).length > 2 * 1024 * 1024) throw err_('データが大きすぎます。');
+  let version = 0;
+  lock_(() => {
+    let f = vaultFile_();
+    const current = f ? Number(f.getDescription() || 0) : 0;
+    if (current !== Number(baseVersion || 0)) throw err_('もう一人が先に保存しました。一度閉じて開き直してください。', 'conflict');
+    if (f) f.setContent(text);
+    else f = DriveApp.getFolderById(FOLDERS.secret).createFile(VAULT_NAME, text, MimeType.PLAIN_TEXT);
+    version = current + 1;
+    f.setDescription(String(version));
+  });
+  return { version: version };
+}
+
+/* =========================================================
  * 内部用
  * ======================================================= */
 
@@ -333,7 +673,11 @@ function lock_(fn) {
   try { fn(); SpreadsheetApp.flush(); } finally { lock.releaseLock(); }
 }
 
-function moneyWrite_(me, fn) { lock_(() => fn(me.ss)); return moneyData_(me); }
+function moneyWrite_(me, fn) {
+  lock_(() => fn(me.ss));
+  me.conf = settings_(me.ss, me.email);
+  return moneyData_(me);
+}
 
 function todoWrite_(fn) {
   const ss = SpreadsheetApp.openById(TODO_ID);
@@ -397,6 +741,7 @@ function json_(obj) {
 function setup() {
   money_().getName();
   SpreadsheetApp.openById(TODO_ID).getName();
+  SpreadsheetApp.openById(FIXED_ID).getName();
   DriveApp.getFolderById(FOLDERS.homePhotos).getName();
   UrlFetchApp.fetch('https://oauth2.googleapis.com/tokeninfo?id_token=x', { muteHttpExceptions: true });
   Logger.log('準備OK');

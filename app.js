@@ -51,22 +51,34 @@ function runTodo(fn, args, okMsg){
 }
 
 /* ---------- 画面の切り替え ---------- */
-var VIEWS = ['home','money','todo'];
-function viewFromHash(){ var h = (location.hash || '').replace('#', ''); return VIEWS.indexOf(h) >= 0 ? h : 'home'; }
-function show(view){
-  S.view = view;
+var VIEWS = ['home','money','fixed','todo','docs','photos','album','secret'];
+function parseHash(){
+  var h = decodeURIComponent((location.hash || '').replace('#', ''));
+  var parts = h.split('/'), v = parts[0];
+  return {view: VIEWS.indexOf(v) >= 0 ? v : 'home', param: parts.slice(1).join('/')};
+}
+function viewFromHash(){ return parseHash().view; }
+function show(view, param){
+  if (S.view === 'secret' && view !== 'secret') lockVault();
+  S.view = view; S.param = param || '';
   $('v-login').hidden = true;
   VIEWS.forEach(function(v){ $('v-' + v).hidden = v !== view; });
+  closeViewer();
   if (view === 'home') renderHome();
   if (view === 'money') renderMoney();
+  if (view === 'fixed') renderFixed();
   if (view === 'todo') renderTodo();
+  if (view === 'docs') openDocs();
+  if (view === 'photos') openPhotos();
+  if (view === 'album') openAlbum(S.param);
+  if (view === 'secret') openSecret();
   window.scrollTo(0, 0);
 }
-function go(view){
-  var target = view === 'home' ? '' : view;
-  if ((location.hash || '').replace('#', '') === target) show(view); else location.hash = target;
+function go(view, param){
+  var target = view === 'home' ? '' : view + (param ? '/' + encodeURIComponent(param) : '');
+  if ((location.hash || '').replace('#', '') === target) show(view, param); else location.hash = target;
 }
-window.addEventListener('hashchange', function(){ if (S.m) show(viewFromHash()); });
+window.addEventListener('hashchange', function(){ if (S.m) { var h = parseHash(); show(h.view, h.param); } });
 
 /* ---------- ログイン ---------- */
 function showLogin(msg){
@@ -104,7 +116,8 @@ function logout(){
 function loadAll(){
   if (!getSession()) { showLogin(); return Promise.resolve(); }
   return call('getAll').then(function(d){
-    S.me = d.me; S.m = d.money; S.t = d.todos; S.folders = d.folders; banner(null);
+    S.me = d.me; S.m = d.money; S.t = d.todos; S.f = d.fixed; S.folders = d.folders; banner(null);
+    if (!S.fxMonth) S.fxMonth = S.f.thisMonth;
     var names = S.m.projects.map(function(p){ return p.name; });
     if (names.indexOf(S.project) < 0) {
       var saved = ''; try { saved = localStorage.getItem('futari-project') || ''; } catch(e) {}
@@ -114,7 +127,7 @@ function loadAll(){
     if (!S.payer || S.m.members.indexOf(S.payer) < 0) S.payer = S.m.meMember || S.m.members[0] || '';
     if (!S.tdOwner) S.tdOwner = S.me.member || OWNERS_BOTH;
     buildStatic();
-    show(viewFromHash());
+    var h = parseHash(); show(h.view, h.param);
     if (!S.photoAsked) { S.photoAsked = true; loadPhoto(); }
   }).catch(function(e){
     if (e && (e.code === 'auth' || e.code === 'forbidden')) return;
@@ -133,7 +146,13 @@ function buildStatic(){
   $('td-filters').innerHTML = ['すべて'].concat(owners).map(function(o){ return '<button type="button" data-filter="' + esc(o) + '" aria-pressed="' + (o === S.tdFilter) + '">' + esc(o) + '</button>'; }).join('');
   $('money-sheet-link').innerHTML = '<a href="' + esc(m.sheetUrl) + '" target="_blank" rel="noopener">台帳をスプレッドシートで開く</a>';
   $('todo-sheet-link').innerHTML = '<a href="' + esc(S.t.sheetUrl) + '" target="_blank" rel="noopener">やることをスプレッドシートで開く</a>';
-  $('tile-docs').href = S.folders.docs; $('tile-photos').href = S.folders.photos; $('root-link').href = S.folders.root;
+  $('root-link').href = S.folders.root;
+  $('pj-b0-label').textContent = (m.members[0] || '') + 'の予算（円）';
+  $('pj-b1-label').textContent = (m.members[1] || '') + 'の予算（円）';
+  $('it-cat').innerHTML = S.f.categories.map(function(c){ return '<option>' + esc(c) + '</option>'; }).join('');
+  $('dep-who').innerHTML = m.members.map(function(n, i){ return '<button type="button" class="m' + i + '" data-depwho="' + esc(n) + '" aria-pressed="' + (n === (S.depWho || S.me.member || m.members[0])) + '">' + esc(n) + '</button>'; }).join('');
+  if (!S.depWho) S.depWho = S.me.member || m.members[0];
+  $('fixed-sheet-link').innerHTML = '<a href="' + esc(S.f.sheetUrl) + '" target="_blank" rel="noopener">固定費をスプレッドシートで開く</a>';
 }
 
 /* ---------- ホーム ---------- */
@@ -144,11 +163,20 @@ function renderHome(){
   var t = moneyTotals(), M = S.m.members, left = t.total - t.used;
   var segs = M.map(function(n, i){ return '<span class="seg-m' + i + '" style="width:' + pct(t.spent[n], Math.max(t.total, t.used)) + '%"></span>'; }).join('');
   $('tile-money').innerHTML =
-    '<div class="t-head"><span class="t-name">お金</span><span class="t-go">開く →</span></div>' +
+    '<div class="t-head"><span class="t-name">お金</span><span class="t-go">→</span></div>' +
     '<div class="t-sub">' + esc(S.project) + ' の残り</div>' +
     '<div class="t-big num' + (left < 0 ? ' over' : '') + '">' + sYen(left) + '</div>' +
     '<div class="bar thin">' + segs + '</div>' +
-    '<div class="t-sub num">' + M.map(function(n){ return esc(n) + ' ' + yen(t.spent[n]); }).join('　') + '　／ 予算 ' + man(t.total) + '</div>';
+    '<div class="t-sub num">予算 ' + man(t.total) + '</div>';
+
+  var fx = fixedMonth(S.f.thisMonth);
+  var depState = M.map(function(n){ return esc(n) + (fx.deposited[n] >= fx.target[n] && fx.target[n] > 0 ? ' 入金済み' : ' 未入金'); }).join('<br>');
+  $('tile-fixed').innerHTML =
+    '<div class="t-head"><span class="t-name">固定費</span><span class="t-go">→</span></div>' +
+    '<div class="t-sub">' + monthLabel(S.f.thisMonth) + 'の合計</div>' +
+    '<div class="t-big num">' + yen(fx.total) + '</div>' +
+    '<div class="t-sub">' + (fx.lines.length ? depState : '項目を登録してください') + '</div>';
+  $('tile-secret-state').textContent = S.vault && S.vault.key ? '🔓 開いています' : '🔒 ロック中';
 
   var open = openTodos(), today = S.t.today;
   var over = open.filter(function(x){ return x.due && x.due < today; }).length;
@@ -400,6 +428,583 @@ $('todo-form').addEventListener('submit', function(ev){
 $('td-title').addEventListener('input', function(){ $('td-err').textContent = ''; });
 $('toggle-done').addEventListener('click', function(){ S.showDone = !S.showDone; renderTodo(); });
 
+S.scShow = {};
+/* ---------- お金：プロジェクトを追加 ---------- */
+$('proj-form').addEventListener('submit', function(ev){
+  ev.preventDefault();
+  var name = $('pj-name').value.trim();
+  if (!name) { $('pj-err').textContent = '名前を入れてください。'; return; }
+  var p = {name:name, budget0:$('pj-b0').value || 0, budget1:$('pj-b1').value || 0, note:$('pj-note').value.trim()};
+  $('proj-form').hidden = true;
+  setBusy(true);
+  api('addProject', p).then(function(d){
+    S.m = d; S.project = name;
+    try { localStorage.setItem('futari-project', name); } catch(e) {}
+    setBusy(false); buildStatic(); renderMoney(); toast('「' + name + '」を作りました');
+  }).catch(function(e){ setBusy(false); $('proj-form').hidden = false; $('pj-err').textContent = errMsg(e); });
+});
+
+/* ---------- 固定費（共通口座） ---------- */
+function monthLabel(ym){ var p = ym.split('-'); return p[0] + '年' + (+p[1]) + '月'; }
+function shiftMonth(ym, n){ var p = ym.split('-'), d = new Date(+p[0], +p[1] - 1 + n, 1); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2); }
+function ratioOf(n){ return S.f.ratio[n] != null ? S.f.ratio[n] : 50; }
+function fixedMonth(ym){
+  var F = S.f, M = S.m.members;
+  var lines = F.items.map(function(it){
+    var rec = F.records.filter(function(r){ return r.month === ym && r.itemId === it.id; })[0];
+    if (!it.active && !rec) return null;
+    var amount = rec ? rec.amount : (it.variable ? null : it.amount);
+    return {item:it, rec:rec, amount:amount, paid: rec ? rec.status === '引き落とし済み' : false};
+  }).filter(Boolean).sort(function(a, b){ return (a.item.day || 99) - (b.item.day || 99); });
+  var total = 0, paid = 0, unknown = 0;
+  lines.forEach(function(l){ if (l.amount == null) unknown++; else { total += l.amount; if (l.paid) paid += l.amount; } });
+  var sumR = 0; M.forEach(function(n){ sumR += ratioOf(n); });
+  var target = {}, deposited = {};
+  M.forEach(function(n){ target[n] = sumR ? Math.round(total * ratioOf(n) / sumR) : 0; deposited[n] = 0; });
+  var deps = F.deposits.filter(function(d){ return d.month === ym; });
+  deps.forEach(function(d){ if (deposited[d.who] != null) deposited[d.who] += d.amount; });
+  return {lines:lines, total:total, paid:paid, unknown:unknown, target:target, deposited:deposited, deps:deps};
+}
+function runFixed(fn, args, okMsg){
+  setBusy(true);
+  return api.apply(null, [fn].concat(args)).then(function(d){ S.f = d; setBusy(false); renderFixed(); if (okMsg) toast(okMsg); })
+    .catch(function(e){ setBusy(false); toast(errMsg(e)); });
+}
+function renderFixed(){
+  if (!S.f) return;
+  var ym = S.fxMonth, fx = fixedMonth(ym), M = S.m.members;
+  $('fx-month').textContent = monthLabel(ym);
+  $('fx-hero').innerHTML = '<div class="label">' + monthLabel(ym) + 'の固定費</div>' +
+    '<div class="big num">' + yen(fx.total) + '</div>' +
+    '<div class="bar"><span style="width:' + pct(fx.paid, fx.total) + '%;background:var(--both)"></span></div>' +
+    '<div class="sub">引き落とし済み <b class="num">' + yen(fx.paid) + '</b>・これから <b class="num">' + yen(fx.total - fx.paid) + '</b>' + (fx.unknown ? '（金額未入力が' + fx.unknown + '件）' : '') + '</div>';
+  $('fx-people').innerHTML = M.map(function(n, i){
+    var t = fx.target[n], dpt = fx.deposited[n], left = t - dpt;
+    return '<div class="person"><div class="who"><span class="dot" style="background:var(--m' + i + ')"></span>' + esc(n) + '</div>' +
+      '<div class="paid num"><small>入れる目安</small>' + yen(t) + '</div>' +
+      '<div class="mini"><span style="width:' + pct(dpt, t) + '%;background:var(--m' + i + ')"></span></div>' +
+      '<div class="left num">' + (t > 0 && left <= 0 ? '<span class="ok">入金済み ' + yen(dpt) + '</span>' : '入金済み ' + yen(dpt) + '・あと ' + yen(Math.max(0, left))) + '</div></div>';
+  }).join('');
+  if (S.editRatio) {
+    $('fx-ratio').innerHTML = '負担の割合：' + M.map(function(n, i){ return esc(n) + ' <input type="number" inputmode="numeric" min="0" max="100" id="ratio-' + i + '" value="' + ratioOf(n) + '" aria-label="' + esc(n) + 'の割合">%'; }).join('　') +
+      ' <button class="small-btn" type="button" data-fx="save-ratio">保存</button><button class="small-btn" type="button" data-fx="cancel-ratio">戻す</button>';
+  } else {
+    $('fx-ratio').innerHTML = '負担の割合：' + M.map(function(n){ return esc(n) + ' ' + ratioOf(n) + '%'; }).join('・') + ' <button class="link-btn" type="button" data-fx="edit-ratio">変える</button>';
+  }
+  $('fx-deps').innerHTML = !fx.deps.length ? '<div class="empty">' + monthLabel(ym) + 'の入金はまだ記録されていません。</div>' :
+    fx.deps.slice().sort(function(a, b){ return (b.date || '').localeCompare(a.date || ''); }).map(function(d){
+      var c = S.confirmDep === d.id;
+      return '<div class="row"><div class="date num">' + esc(md(d.date)) + '</div><div class="main"><div class="title"><span class="chip m' + mIdx(d.who) + '">' + esc(d.who) + '</span> が入金</div>' + (d.memo ? '<div class="sub">' + esc(d.memo) + '</div>' : '') + '</div>' +
+        '<div class="amt num">' + yen(d.amount) + '</div>' +
+        (c ? '<button class="small-btn danger" type="button" data-fx="del-dep" data-id="' + esc(d.id) + '">削除</button><button class="small-btn" type="button" data-fx="cancel">戻す</button>'
+           : '<button class="icon-btn" type="button" aria-label="入金の記録を削除" data-fx="ask-del-dep" data-id="' + esc(d.id) + '">×</button>') + '</div>';
+    }).join('');
+  if (!fx.lines.length) {
+    var quick = [['家賃','住居',false],['電気','光熱費',true],['ガス','光熱費',true],['水道','光熱費',true],['インターネット','通信',false],['スマホ','通信',false]];
+    $('fx-items').innerHTML = '<div class="empty">まだ項目がありません。よく使うものから追加できます。<div class="row-actions" style="justify-content:center;margin-top:10px">' +
+      quick.map(function(q){ return '<button class="small-btn" type="button" data-fx="quick" data-name="' + q[0] + '" data-cat="' + q[1] + '" data-var="' + q[2] + '">＋ ' + q[0] + '</button>'; }).join('') + '</div></div>';
+  } else {
+    $('fx-items').innerHTML = fx.lines.map(function(l){
+      var it = l.item, amtHtml;
+      if (S.editRec === it.id) amtHtml = '<form class="inline-est" data-fxform="amount" data-id="' + esc(it.id) + '"><input id="rec-input" type="number" inputmode="numeric" min="0" step="1" value="' + (l.amount != null ? l.amount : '') + '" aria-label="今月の金額（円）"><button class="small-btn" type="submit">保存</button></form>';
+      else if (l.amount == null) amtHtml = '<button class="need" type="button" data-fx="edit-rec" data-id="' + esc(it.id) + '">金額を入れる</button>';
+      else amtHtml = '<button class="est-btn num" type="button" data-fx="edit-rec" data-id="' + esc(it.id) + '">' + yen(l.amount) + '</button>';
+      return '<div class="row"><div class="date num">' + (it.day ? it.day + '日' : '') + '</div>' +
+        '<div class="main"><div class="title">' + esc(it.name) + (it.active ? '' : '（やめた）') + '</div><div class="sub"><span>' + esc(it.category) + '</span>' + (it.variable ? '<span>毎月変わる</span>' : '') + (it.memo ? '<span>' + esc(it.memo) + '</span>' : '') +
+        '<button class="link-btn" type="button" data-fx="edit-item" data-id="' + esc(it.id) + '">編集</button></div></div>' +
+        amtHtml + '<button class="paid-btn' + (l.paid ? ' on' : '') + '" type="button" data-fx="toggle-paid" data-id="' + esc(it.id) + '">' + (l.paid ? '済み' : '予定') + '</button></div>';
+    }).join('');
+  }
+  if (S.editRec) { var ri = $('rec-input'); if (ri) ri.focus(); }
+}
+function openItemForm(it, preset){
+  S.editItem = it ? it.id : null;
+  $('item-form').hidden = false; $('it-err').textContent = '';
+  $('item-form-title').textContent = it ? '「' + it.name + '」を編集' : '固定費の項目を追加';
+  $('it-submit').textContent = it ? '保存する' : '追加する';
+  $('it-stop').hidden = !it || !it.active;
+  $('it-name').value = it ? it.name : ((preset && preset.name) || '');
+  $('it-amount').value = it ? (it.amount || '') : '';
+  $('it-day').value = it ? it.day : '';
+  $('it-cat').value = it ? it.category : ((preset && preset.cat) || S.f.categories[0] || '');
+  $('it-var').checked = it ? it.variable : !!(preset && preset.variable);
+  $('it-memo').value = it ? it.memo : '';
+  $('item-form').scrollIntoView({behavior:'smooth', block:'center'});
+}
+function openDepForm(){
+  var fx = fixedMonth(S.fxMonth);
+  $('dep-form').hidden = false; $('dep-err').textContent = ''; $('dep-memo').value = '';
+  $('dep-date').value = S.f.today;
+  $('dep-amount').value = Math.max(0, (fx.target[S.depWho] || 0) - (fx.deposited[S.depWho] || 0)) || '';
+  $('dep-form').scrollIntoView({behavior:'smooth', block:'center'});
+}
+$('item-form').addEventListener('submit', function(ev){
+  ev.preventDefault();
+  var f = {name:$('it-name').value.trim(), amount:$('it-amount').value || 0, day:$('it-day').value, category:$('it-cat').value, variable:$('it-var').checked, memo:$('it-memo').value.trim()};
+  if (!f.name) { $('it-err').textContent = '項目名を入れてください。'; return; }
+  if (!(Number(f.amount) >= 0)) { $('it-err').textContent = '金額は0以上で入れてください。'; return; }
+  if (f.day !== '' && !(Number(f.day) >= 1 && Number(f.day) <= 31)) { $('it-err').textContent = '引き落とし日は1〜31で入れてください。'; return; }
+  $('item-form').hidden = true;
+  if (S.editItem) runFixed('updateFixedItem', [S.editItem, f], '保存しました');
+  else runFixed('addFixedItem', [f], '「' + f.name + '」を追加しました');
+});
+$('dep-form').addEventListener('submit', function(ev){
+  ev.preventDefault();
+  var amount = Math.round(Number($('dep-amount').value));
+  if (!(amount > 0)) { $('dep-err').textContent = '金額を1円以上で入れてください。'; return; }
+  $('dep-form').hidden = true;
+  runFixed('addDeposit', [{who:S.depWho, amount:amount, date:$('dep-date').value || S.f.today, month:S.fxMonth, memo:$('dep-memo').value.trim()}], S.depWho + 'の入金 ' + yen(amount) + ' を記録しました');
+});
+document.addEventListener('submit', function(ev){
+  var f = ev.target.closest('[data-fxform="amount"]'); if (!f) return;
+  ev.preventDefault();
+  var id = f.dataset.id, raw = $('rec-input').value.trim();
+  if (raw === '' || !(Number(raw) >= 0)) { toast('金額を0以上の数字で入れてください'); return; }
+  var l = fixedMonth(S.fxMonth).lines.filter(function(x){ return x.item.id === id; })[0];
+  S.editRec = null;
+  runFixed('setFixedRecord', [S.fxMonth, id, Number(raw), l && l.paid ? '引き落とし済み' : '予定'], '金額を保存しました');
+});
+
+/* ---------- 書類 ---------- */
+var DOC_MAX = 15 * 1024 * 1024;
+function fmtSize(n){ return n >= 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB'; }
+function openDocs(){
+  if (S.docs) { renderDocs(); return; }
+  $('docs-list').innerHTML = '<div class="list"><div class="empty">読み込み中…</div></div>';
+  api('getDocs').then(function(d){ S.docs = d; if (S.view === 'docs') renderDocs(); })
+    .catch(function(e){ $('docs-list').innerHTML = '<div class="list"><div class="empty">' + esc(errMsg(e)) + '</div></div>'; });
+}
+function renderDocs(){
+  var d = S.docs;
+  $('doc-cat').innerHTML = d.categories.map(function(c){ return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>'; }).join('');
+  $('docs-list').innerHTML = d.categories.map(function(c){
+    return '<div style="display:flex;flex-direction:column;gap:6px"><div class="group-name">' + esc(c.name) + '（' + c.files.length + '）</div><div class="list">' +
+      (c.files.length ? c.files.map(function(f){
+        var conf = S.confirmFile === f.id;
+        return '<div class="row clickable" data-open-file="' + esc(f.id) + '" data-name="' + esc(f.name) + '"><span class="badge ' + f.kind + '">' + (f.kind === 'pdf' ? 'PDF' : f.kind === 'image' ? '画像' : 'ファイル') + '</span>' +
+          '<div class="main"><div class="title">' + esc(f.name) + '</div><div class="sub"><span>' + esc(f.updated) + '</span><span>' + fmtSize(f.size) + '</span></div></div>' +
+          (conf ? '<button class="small-btn danger" type="button" data-doc="trash" data-id="' + esc(f.id) + '">削除</button><button class="small-btn" type="button" data-doc="cancel">戻す</button>'
+                : '<button class="icon-btn" type="button" aria-label="' + esc(f.name) + 'を削除" data-doc="ask-trash" data-id="' + esc(f.id) + '">×</button>') + '</div>';
+      }).join('') : '<div class="empty">まだありません</div>') + '</div></div>';
+  }).join('') || '<div class="list"><div class="empty">分類がありません。「＋ 分類を作る」から作れます。</div></div>';
+}
+function readDataUrl(file){
+  return new Promise(function(res, rej){
+    var r = new FileReader();
+    r.onload = function(){ res(r.result); };
+    r.onerror = function(){ rej(new Error('ファイルを読み込めませんでした。')); };
+    r.readAsDataURL(file);
+  });
+}
+function isPdf(f){ return f.type === 'application/pdf' || /\.pdf$/i.test(f.name); }
+$('doc-form').addEventListener('submit', function(ev){
+  ev.preventDefault();
+  var files = Array.prototype.slice.call($('doc-file').files || []);
+  if (!files.length) { $('doc-err').textContent = 'ファイルを選んでください。'; return; }
+  var bad = files.filter(function(f){ return !(isPdf(f) || /^image\//.test(f.type)); })[0];
+  if (bad) { $('doc-err').textContent = '「' + bad.name + '」は保存できません。写真かPDFを選んでください。'; return; }
+  var big = files.filter(function(f){ return isPdf(f) && f.size > DOC_MAX; })[0];
+  if (big) { $('doc-err').textContent = '「' + big.name + '」が大きすぎます（15MBまで）。'; return; }
+  var folder = $('doc-cat').value, custom = $('doc-name').value.trim(), i = 0;
+  $('doc-form').hidden = true; setBusy(true);
+  (function next(){
+    if (i >= files.length) { setBusy(false); $('doc-file').value = ''; $('doc-name').value = ''; renderDocs(); toast(files.length + '件 保存しました'); return; }
+    var f = files[i], pdf = isPdf(f);
+    toast((i + 1) + ' / ' + files.length + ' 件目を保存しています…');
+    var base = (files.length === 1 && custom) ? custom : f.name.replace(/\.[^.]+$/, '');
+    (pdf ? readDataUrl(f) : shrinkImage(f, 2400, 0.85))
+      .then(function(du){ return api('uploadDoc', folder, base + (pdf ? '.pdf' : '.jpg'), du); })
+      .then(function(d){ S.docs = d; i++; next(); })
+      .catch(function(e){ setBusy(false); renderDocs(); toast(errMsg(e)); });
+  })();
+});
+$('docfolder-form').addEventListener('submit', function(ev){
+  ev.preventDefault();
+  var n = $('docfolder-name').value.trim();
+  if (!n) { $('docfolder-err').textContent = '名前を入れてください。'; return; }
+  setBusy(true);
+  api('addDocFolder', n).then(function(d){ S.docs = d; setBusy(false); $('docfolder-form').hidden = true; $('docfolder-name').value = ''; renderDocs(); toast('「' + n + '」を作りました'); })
+    .catch(function(e){ setBusy(false); $('docfolder-err').textContent = errMsg(e); });
+});
+
+/* ---------- ファイルを見る画面 ---------- */
+function openViewer(name){
+  $('viewer').hidden = false; $('viewer-name').textContent = name || '';
+  $('viewer-body').innerHTML = '<div class="msg">読み込み中…</div>'; $('viewer-actions').innerHTML = '';
+  document.body.style.overflow = 'hidden';
+}
+function closeViewer(){
+  if ($('viewer').hidden) return;
+  $('viewer').hidden = true; document.body.style.overflow = '';
+  S.confirmPhoto = null;
+  if (S.blobUrl) { URL.revokeObjectURL(S.blobUrl); S.blobUrl = null; }
+}
+function dataUrlToBlobUrl(du){
+  var m = du.match(/^data:([^;]+);base64,(.*)$/), bin = atob(m[2]), arr = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return URL.createObjectURL(new Blob([arr], {type:m[1]}));
+}
+function showFile(id, name, extraHtml){
+  openViewer(name);
+  S.viewerId = id;
+  api('getFileData', id).then(function(d){
+    if ($('viewer').hidden || S.viewerId !== id) return;
+    if (S.blobUrl) URL.revokeObjectURL(S.blobUrl);
+    S.blobUrl = dataUrlToBlobUrl(d.dataUrl);
+    var isImg = /^image\//.test(d.mime);
+    $('viewer-body').innerHTML = isImg ? '<img src="' + S.blobUrl + '" alt="' + esc(d.name) + '">'
+      : (d.mime === 'application/pdf' ? '<iframe src="' + S.blobUrl + '" title="' + esc(d.name) + '"></iframe>' : '<div class="msg">このファイルはここでは表示できません。</div>');
+    $('viewer-actions').innerHTML = '<a href="' + S.blobUrl + '" target="_blank" rel="noopener">別の画面で開く</a>' + (extraHtml || '');
+  }).catch(function(e){
+    if (S.viewerId !== id) return;
+    $('viewer-body').innerHTML = '<div class="msg">' + esc(errMsg(e)) + '</div>';
+  });
+}
+
+/* ---------- 写真 ---------- */
+function openPhotos(){
+  if (S.albums) { renderAlbums(); return; }
+  $('albums').innerHTML = '<div class="empty" style="grid-column:1/-1">読み込み中…</div>';
+  api('getAlbums').then(function(d){ S.albums = d; if (S.view === 'photos') renderAlbums(); })
+    .catch(function(e){ $('albums').innerHTML = '<div class="empty" style="grid-column:1/-1">' + esc(errMsg(e)) + '</div>'; });
+}
+function renderAlbums(){
+  var a = S.albums.albums;
+  $('albums').innerHTML = !a.length ? '<div class="list" style="grid-column:1/-1"><div class="empty">まだアルバムがありません。「＋ アルバムを作る」から始めましょう。</div></div>' :
+    a.map(function(x){
+      return '<button class="album" type="button" data-album="' + esc(x.id) + '"><div class="cover">' + (x.cover ? '<img src="' + x.cover + '" alt="">' : '写真なし') + '</div>' +
+        '<div class="a-name">' + esc(x.name) + '</div><div class="a-count">' + x.count + '枚</div></button>';
+    }).join('');
+}
+$('album-form').addEventListener('submit', function(ev){
+  ev.preventDefault();
+  var n = $('album-name').value.trim();
+  if (!n) { $('album-err').textContent = '名前を入れてください。'; return; }
+  setBusy(true);
+  api('addAlbum', n).then(function(d){ S.albums = d; setBusy(false); $('album-form').hidden = true; renderAlbums(); toast('「' + n + '」を作りました'); })
+    .catch(function(e){ setBusy(false); $('album-err').textContent = errMsg(e); });
+});
+function openAlbum(id){
+  if (!id) { go('photos'); return; }
+  if (S.album && S.album.id === id) { renderAlbum(); return; }
+  S.album = null;
+  $('album-title').textContent = 'アルバム'; $('album-count').textContent = '';
+  $('photo-grid').innerHTML = '<div class="empty" style="grid-column:1/-1">読み込み中…</div>';
+  api('getAlbum', id).then(function(d){ S.album = d; if (S.view === 'album') renderAlbum(); })
+    .catch(function(e){ $('photo-grid').innerHTML = '<div class="empty" style="grid-column:1/-1">' + esc(errMsg(e)) + '</div>'; });
+}
+function renderAlbum(){
+  var a = S.album;
+  $('album-title').textContent = a.name; $('album-count').textContent = a.photos.length + '枚';
+  $('photo-grid').innerHTML = !a.photos.length ? '<div class="empty" style="grid-column:1/-1">右上の「＋ 写真」から追加できます。</div>' :
+    a.photos.map(function(p){ return '<button type="button" data-photo="' + esc(p.id) + '" data-name="' + esc(p.name) + '" aria-label="' + esc(p.name) + '">' + (p.thumb ? '<img src="' + p.thumb + '" alt="" loading="lazy">' : '') + '</button>'; }).join('');
+}
+$('album-input').addEventListener('change', function(){
+  var files = Array.prototype.slice.call(this.files || []).filter(function(f){ return /^image\//.test(f.type) || /\.(jpe?g|png|heic|heif|webp)$/i.test(f.name); });
+  this.value = '';
+  if (!files.length || !S.album) return;
+  var albumId = S.album.id, i = 0, ok = 0;
+  setBusy(true);
+  (function next(){
+    if (i >= files.length) { setBusy(false); S.albums = null; if (S.album && S.album.id === albumId) renderAlbum(); toast(ok + '枚 追加しました'); return; }
+    var f = files[i];
+    toast((i + 1) + ' / ' + files.length + ' 枚目を保存しています…');
+    shrinkImage(f, 1600, 0.82).then(function(du){ return api('uploadPhoto', albumId, du, f.name.replace(/\.[^.]+$/, '') + '.jpg'); })
+      .then(function(p){ ok++; if (S.album && S.album.id === albumId) { S.album.photos.unshift(p); renderAlbum(); } i++; next(); })
+      .catch(function(e){ toast(errMsg(e)); i++; next(); });
+  })();
+});
+
+/* ---------- 機密（ブラウザの中で暗号化） ---------- */
+var VAULT_ITER = 600000, LOCK_MS = 5 * 60 * 1000;
+var SC_CATS = ['Wi-Fi・家', '銀行・カード', '契約・会員番号', 'ネット・サブスク', 'その他'];
+var TE = new TextEncoder(), TD = new TextDecoder();
+function b64(buf){ var s = '', a = new Uint8Array(buf); for (var i = 0; i < a.length; i++) s += String.fromCharCode(a[i]); return btoa(s); }
+function unb64(s){ var bin = atob(s), a = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return a; }
+function deriveKey(pw, salt, iter){
+  return crypto.subtle.importKey('raw', TE.encode(pw), 'PBKDF2', false, ['deriveKey']).then(function(base){
+    return crypto.subtle.deriveKey({name:'PBKDF2', salt:salt, iterations:iter, hash:'SHA-256'}, base, {name:'AES-GCM', length:256}, false, ['encrypt', 'decrypt']);
+  });
+}
+function sealVault(v){
+  var iv = crypto.getRandomValues(new Uint8Array(12));
+  return crypto.subtle.encrypt({name:'AES-GCM', iv:iv}, v.key, TE.encode(JSON.stringify(v.data))).then(function(ct){
+    return JSON.stringify({v:1, kdf:'PBKDF2-SHA256', iter:v.iter, salt:b64(v.salt), iv:b64(iv), ct:b64(ct)});
+  });
+}
+function unsealVault(text, pw){
+  var o = JSON.parse(text), salt = unb64(o.salt);
+  return deriveKey(pw, salt, o.iter).then(function(key){
+    return crypto.subtle.decrypt({name:'AES-GCM', iv:unb64(o.iv)}, key, unb64(o.ct)).then(function(pt){
+      return {key:key, salt:salt, iter:o.iter, data:JSON.parse(TD.decode(pt))};
+    }, function(){ throw new Error('パスワードが違います。'); });
+  });
+}
+function lockVault(){
+  var was = !!S.vault;
+  S.vault = null; S.scShow = {}; S.scEdit = undefined; S.scConfirm = null; S.scPwForm = false;
+  clearTimeout(S.lockTimer);
+  if (was && S.view === 'secret') renderSecret();
+}
+function touchVault(){ clearTimeout(S.lockTimer); if (S.vault) S.lockTimer = setTimeout(function(){ lockVault(); toast('しばらく操作がなかったのでロックしました'); }, LOCK_MS); }
+function openSecret(){
+  if (!window.crypto || !crypto.subtle) { $('sc-body').innerHTML = '<div class="sc-card"><p class="warn">このブラウザでは機密を開けません。SafariかChromeで開いてください。</p></div>'; return; }
+  if (S.vault) { renderSecret(); return; }
+  $('sc-body').innerHTML = '<div class="sc-card"><p>読み込み中…</p></div>';
+  api('getVault').then(function(d){ S.vaultMeta = d; if (S.view === 'secret') renderSecret(); })
+    .catch(function(e){ $('sc-body').innerHTML = '<div class="sc-card"><p class="warn">' + esc(errMsg(e)) + '</p></div>'; });
+}
+function genPassword(){
+  var cs = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!#%+-=?@', out = '', r = crypto.getRandomValues(new Uint32Array(16));
+  for (var i = 0; i < 16; i++) out += cs.charAt(r[i] % cs.length);
+  return out;
+}
+function renderSecret(){
+  $('sc-lock').hidden = !S.vault;
+  var meta = S.vaultMeta;
+  if (!S.vault) {
+    if (!meta) return;
+    if (!meta.exists) {
+      $('sc-body').innerHTML = '<form class="sc-card" id="sc-setup" novalidate><h2>ふたりのパスワードを決める</h2>' +
+        '<p>機密に入れたものは、このパスワードでスマホの中で暗号化してから保存します。ドライブには暗号化された文字しか残らないので、Googleアカウントが見られても中身はわかりません。</p>' +
+        '<p class="warn">このパスワードを忘れると、誰にも（私にも）中身を戻せません。紙に書いて家にしまっておくなど、ふたりで必ず控えておいてください。</p>' +
+        '<div class="field"><label for="sc-pw1">パスワード（12文字以上がおすすめ）</label><input id="sc-pw1" type="password" autocomplete="new-password"></div>' +
+        '<div class="field"><label for="sc-pw2">もう一度</label><input id="sc-pw2" type="password" autocomplete="new-password"></div>' +
+        '<div class="err" id="sc-err"></div><div class="actions"><button class="btn" type="submit">作る</button></div></form>';
+    } else {
+      $('sc-body').innerHTML = '<form class="sc-card" id="sc-unlock" novalidate><h2>🔒 ロックされています</h2><p>ふたりで決めたパスワードを入れてください。5分操作しないと自動でロックします。</p>' +
+        '<div class="field"><label for="sc-pw">パスワード</label><input id="sc-pw" type="password" autocomplete="current-password"></div>' +
+        '<div class="err" id="sc-err"></div><div class="actions"><button class="btn" type="submit">開く</button></div></form>';
+      setTimeout(function(){ var p = $('sc-pw'); if (p) p.focus(); }, 50);
+    }
+    return;
+  }
+  var q = (S.scQuery || '').toLowerCase();
+  var list = S.vault.data.entries.filter(function(e){ return !q || (e.title + ' ' + e.user + ' ' + e.memo + ' ' + e.category).toLowerCase().indexOf(q) >= 0; });
+  var html = '<div class="row-actions"><input class="sc-search" id="sc-q" placeholder="さがす" value="' + esc(S.scQuery || '') + '" aria-label="さがす"></div>' +
+    '<div class="row-actions"><button class="btn" type="button" data-sc="new">＋ 追加</button></div>';
+  if (S.scEdit !== undefined) {
+    var e = S.scEdit ? S.vault.data.entries.filter(function(x){ return x.id === S.scEdit; })[0] || {} : {};
+    html += '<form class="form" id="sc-form" novalidate><div class="ftitle">' + (S.scEdit ? '「' + esc(e.title) + '」を編集' : '機密を追加') + '</div>' +
+      '<div class="field"><label for="se-title">名前</label><input id="se-title" maxlength="60" value="' + esc(e.title || '') + '" placeholder="例：家のWi-Fi、〇〇銀行"></div>' +
+      '<div class="field"><label for="se-cat">分類</label><select class="in" id="se-cat">' + SC_CATS.map(function(c){ return '<option' + (c === e.category ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field"><label for="se-user">ID・ユーザー名・番号</label><input id="se-user" autocomplete="off" value="' + esc(e.user || '') + '"></div>' +
+      '<div class="field"><label for="se-pass">パスワード</label><div class="pw-row"><input id="se-pass" autocomplete="off" value="' + esc(e.password || '') + '"><button class="small-btn" type="button" data-sc="gen">自動で作る</button></div></div>' +
+      '<div class="field"><label for="se-url">URL（任意）</label><input id="se-url" inputmode="url" value="' + esc(e.url || '') + '"></div>' +
+      '<div class="field"><label for="se-memo">メモ（任意）</label><input id="se-memo" maxlength="300" value="' + esc(e.memo || '') + '"></div>' +
+      '<div class="err" id="se-err"></div><div class="actions"><button class="btn ghost" type="button" data-sc="cancel-edit">やめる</button><button class="btn" type="submit">保存する</button></div></form>';
+  }
+  var groups = {}; SC_CATS.forEach(function(c){ groups[c] = []; });
+  list.forEach(function(x){ (groups[x.category] || (groups[x.category] = [])).push(x); });
+  var body = Object.keys(groups).filter(function(k){ return groups[k].length; }).map(function(k){
+    return '<div style="display:flex;flex-direction:column;gap:6px"><div class="group-name">' + esc(k) + '</div><div class="list">' + groups[k].sort(function(a, b){ return a.title.localeCompare(b.title, 'ja'); }).map(function(x){
+      var shown = S.scShow[x.id], c = S.scConfirm === x.id;
+      return '<div class="row sc-entry"><div class="main"><div class="title">' + esc(x.title) + '</div>' +
+        (x.user ? '<div class="sc-line"><span class="lab">ID</span><span class="secret-val">' + esc(x.user) + '</span><button class="mini-btn" type="button" data-sc="copy-user" data-id="' + esc(x.id) + '">コピー</button></div>' : '') +
+        (x.password ? '<div class="sc-line"><span class="lab">パスワード</span><span class="secret-val">' + (shown ? esc(x.password) : '••••••••') + '</span><button class="mini-btn" type="button" data-sc="toggle" data-id="' + esc(x.id) + '">' + (shown ? '隠す' : '表示') + '</button><button class="mini-btn" type="button" data-sc="copy-pass" data-id="' + esc(x.id) + '">コピー</button></div>' : '') +
+        (x.url ? '<div class="sc-line"><span class="lab">URL</span><a class="secret-val" href="' + esc(x.url) + '" target="_blank" rel="noopener noreferrer">' + esc(x.url) + '</a></div>' : '') +
+        (x.memo ? '<div class="sub" style="margin-top:4px">' + esc(x.memo) + '</div>' : '') +
+        '<div class="sub" style="margin-top:4px"><span>' + esc(x.updatedBy || '') + ' ' + esc((x.updatedAt || '').slice(0, 10)) + '</span><button class="link-btn" type="button" data-sc="edit" data-id="' + esc(x.id) + '">編集</button>' +
+        (c ? '<button class="small-btn danger" type="button" data-sc="delete" data-id="' + esc(x.id) + '">削除</button><button class="small-btn" type="button" data-sc="cancel-del">戻す</button>' : '<button class="link-btn" type="button" data-sc="ask-del" data-id="' + esc(x.id) + '">削除</button>') +
+        '</div></div></div>';
+    }).join('') + '</div></div>';
+  }).join('');
+  html += body || '<div class="list"><div class="empty">' + (q ? '見つかりませんでした。' : 'まだ何も入っていません。Wi-Fiのパスワードや契約番号など、ふたりで共有したいものを入れておきましょう。') + '</div></div>';
+  html += S.scPwForm
+    ? '<form class="form" id="sc-pwform" novalidate><div class="ftitle">機密のパスワードを変える</div>' +
+      '<div class="field"><label for="sc-np1">新しいパスワード</label><input id="sc-np1" type="password" autocomplete="new-password"></div>' +
+      '<div class="field"><label for="sc-np2">もう一度</label><input id="sc-np2" type="password" autocomplete="new-password"></div>' +
+      '<div class="err" id="sc-np-err"></div><div class="actions"><button class="btn ghost" type="button" data-sc="cancel-pw">やめる</button><button class="btn" type="submit">変える</button></div></form>'
+    : '<div class="home-foot"><button type="button" data-sc="open-pw">機密のパスワードを変える</button></div>';
+  $('sc-body').innerHTML = html;
+}
+function saveVault(newData, okMsg){
+  var v = S.vault, next = {key:v.key, salt:v.salt, iter:v.iter, data:newData};
+  setBusy(true);
+  return sealVault(next).then(function(text){ return api('saveVault', text, v.version).then(function(r){ return {text:text, r:r}; }); })
+    .then(function(x){
+      next.version = x.r.version; S.vault = next; S.vaultMeta = {exists:true, text:x.text, version:x.r.version};
+      setBusy(false); S.scEdit = undefined; renderSecret(); if (okMsg) toast(okMsg);
+    })
+    .catch(function(e){
+      setBusy(false); toast(errMsg(e));
+      if (e.code === 'conflict') { lockVault(); S.vaultMeta = null; openSecret(); }
+    });
+}
+function copyText(t){
+  var fallback = function(){ toast('コピーできませんでした。長押しでコピーしてください'); };
+  try { navigator.clipboard.writeText(t).then(function(){ toast('コピーしました'); }, fallback); } catch(e) { fallback(); }
+}
+document.addEventListener('submit', function(ev){
+  var f = ev.target;
+  if (f.id === 'sc-setup') {
+    ev.preventDefault();
+    var p1 = $('sc-pw1').value, p2 = $('sc-pw2').value;
+    if (p1.length < 8) { $('sc-err').textContent = '8文字以上にしてください（12文字以上がおすすめです）。'; return; }
+    if (p1 !== p2) { $('sc-err').textContent = '2つのパスワードが違います。'; return; }
+    setBusy(true);
+    var salt = crypto.getRandomValues(new Uint8Array(16));
+    deriveKey(p1, salt, VAULT_ITER).then(function(key){
+      S.vault = {key:key, salt:salt, iter:VAULT_ITER, data:{entries:[]}, version:0};
+      setBusy(false); touchVault(); saveVault({entries:[]}, '機密を作りました');
+    }).catch(function(e){ setBusy(false); $('sc-err').textContent = errMsg(e); });
+  } else if (f.id === 'sc-unlock') {
+    ev.preventDefault();
+    var pw = $('sc-pw').value;
+    if (!pw) { $('sc-err').textContent = 'パスワードを入れてください。'; return; }
+    setBusy(true);
+    unsealVault(S.vaultMeta.text, pw).then(function(v){
+      v.version = S.vaultMeta.version; S.vault = v; S.scShow = {};
+      setBusy(false); touchVault(); renderSecret(); renderHomeSecretState();
+    }).catch(function(e){ setBusy(false); $('sc-err').textContent = errMsg(e); $('sc-pw').value = ''; });
+  } else if (f.id === 'sc-form') {
+    ev.preventDefault();
+    var title = $('se-title').value.trim();
+    if (!title) { $('se-err').textContent = '名前を入れてください。'; return; }
+    var now = new Date().toISOString(), entries = S.vault.data.entries.slice();
+    var item = {title:title, category:$('se-cat').value, user:$('se-user').value.trim(), password:$('se-pass').value, url:$('se-url').value.trim(), memo:$('se-memo').value.trim(), updatedAt:now, updatedBy:S.me.member || ''};
+    if (S.scEdit) entries = entries.map(function(x){ return x.id === S.scEdit ? Object.assign({id:x.id}, item) : x; });
+    else entries.push(Object.assign({id:b64(crypto.getRandomValues(new Uint8Array(9))).replace(/[+\/=]/g, '')}, item));
+    saveVault({entries:entries}, '保存しました');
+  } else if (f.id === 'sc-pwform') {
+    ev.preventDefault();
+    var n1 = $('sc-np1').value, n2 = $('sc-np2').value;
+    if (n1.length < 8) { $('sc-np-err').textContent = '8文字以上にしてください。'; return; }
+    if (n1 !== n2) { $('sc-np-err').textContent = '2つのパスワードが違います。'; return; }
+    setBusy(true);
+    var ns = crypto.getRandomValues(new Uint8Array(16));
+    deriveKey(n1, ns, VAULT_ITER).then(function(key){
+      S.vault = {key:key, salt:ns, iter:VAULT_ITER, data:S.vault.data, version:S.vault.version};
+      setBusy(false); S.scPwForm = false; saveVault(S.vault.data, 'パスワードを変えました。ふたりで新しいパスワードを控えてください');
+    }).catch(function(e){ setBusy(false); $('sc-np-err').textContent = errMsg(e); });
+  }
+});
+document.addEventListener('input', function(ev){
+  if (ev.target.id === 'sc-q') {
+    S.scQuery = ev.target.value; var pos = ev.target.selectionStart;
+    renderSecret(); var q = $('sc-q'); q.focus(); try { q.setSelectionRange(pos, pos); } catch(e) {}
+  }
+  if (S.view === 'secret') touchVault();
+});
+function renderHomeSecretState(){ $('tile-secret-state').textContent = S.vault ? '🔓 開いています' : '🔒 ロック中'; }
+$('sc-lock').addEventListener('click', function(){ lockVault(); renderHomeSecretState(); toast('ロックしました'); });
+document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'hidden' && S.vault) { lockVault(); renderHomeSecretState(); } });
+
+/* ---------- 新しい画面のボタン ---------- */
+document.addEventListener('click', function(ev){
+  if (S.view === 'secret') touchVault();
+  var dw = ev.target.closest('[data-depwho]');
+  if (dw) {
+    S.depWho = dw.dataset.depwho;
+    Array.prototype.forEach.call($('dep-who').querySelectorAll('button'), function(b){ b.setAttribute('aria-pressed', String(b.dataset.depwho === S.depWho)); });
+    var fx0 = fixedMonth(S.fxMonth); $('dep-amount').value = Math.max(0, (fx0.target[S.depWho] || 0) - (fx0.deposited[S.depWho] || 0)) || '';
+    return;
+  }
+  var mb = ev.target.closest('[data-month]');
+  if (mb) { S.fxMonth = shiftMonth(S.fxMonth, Number(mb.dataset.month)); S.editRec = null; renderFixed(); return; }
+  if (S.busy) return;
+
+  var al = ev.target.closest('[data-album]'); if (al) { go('album', al.dataset.album); return; }
+  var ph = ev.target.closest('[data-photo]');
+  if (ph) {
+    var pid = ph.dataset.photo;
+    showFile(pid, ph.dataset.name, '<button type="button" data-ph="home" data-id="' + esc(pid) + '">ホームに使う</button><button type="button" class="danger" data-ph="trash" data-id="' + esc(pid) + '">削除</button>');
+    return;
+  }
+  var pa = ev.target.closest('[data-ph]');
+  if (pa) {
+    var id0 = pa.dataset.id;
+    if (pa.dataset.ph === 'home') {
+      setBusy(true);
+      api('setHomeFromPhoto', id0).then(function(){ setBusy(false); toast('ホームの写真に追加しました'); }).catch(function(e){ setBusy(false); toast(errMsg(e)); });
+    } else if (pa.dataset.ph === 'trash') {
+      if (S.confirmPhoto !== id0) { S.confirmPhoto = id0; pa.textContent = 'もう一度押すと削除'; return; }
+      setBusy(true);
+      api('trashFile', id0).then(function(){
+        setBusy(false); closeViewer(); S.albums = null;
+        if (S.album) { S.album.photos = S.album.photos.filter(function(p){ return p.id !== id0; }); renderAlbum(); }
+        toast('削除しました（ドライブのゴミ箱から30日以内なら戻せます）');
+      }).catch(function(e){ setBusy(false); toast(errMsg(e)); });
+    }
+    return;
+  }
+
+  var dc = ev.target.closest('[data-doc]');
+  if (dc) {
+    var did = dc.dataset.id;
+    if (dc.dataset.doc === 'ask-trash') { S.confirmFile = did; renderDocs(); }
+    else if (dc.dataset.doc === 'cancel') { S.confirmFile = null; renderDocs(); }
+    else if (dc.dataset.doc === 'trash') {
+      S.confirmFile = null; setBusy(true);
+      api('trashFile', did).then(function(){ setBusy(false); S.docs.categories.forEach(function(c){ c.files = c.files.filter(function(f){ return f.id !== did; }); }); renderDocs(); toast('削除しました（ドライブのゴミ箱から30日以内なら戻せます）'); })
+        .catch(function(e){ setBusy(false); toast(errMsg(e)); });
+    }
+    return;
+  }
+  var of = ev.target.closest('[data-open-file]'); if (of) { showFile(of.dataset.openFile, of.dataset.name); return; }
+
+  var fb = ev.target.closest('[data-fx]');
+  if (fb) {
+    var a = fb.dataset.fx, id = fb.dataset.id;
+    if (a === 'quick') openItemForm(null, {name:fb.dataset.name, cat:fb.dataset.cat, variable:fb.dataset['var'] === 'true'});
+    else if (a === 'edit-item') openItemForm(S.f.items.filter(function(x){ return x.id === id; })[0]);
+    else if (a === 'edit-rec') { S.editRec = id; renderFixed(); }
+    else if (a === 'toggle-paid') {
+      var l = fixedMonth(S.fxMonth).lines.filter(function(x){ return x.item.id === id; })[0];
+      if (!l) return;
+      if (l.amount == null) { S.editRec = id; renderFixed(); toast('先に今月の金額を入れてください'); return; }
+      runFixed('setFixedRecord', [S.fxMonth, id, l.amount, l.paid ? '予定' : '引き落とし済み'], l.paid ? '予定に戻しました' : '「' + l.item.name + '」引き落とし済み');
+    }
+    else if (a === 'ask-del-dep') { S.confirmDep = id; renderFixed(); }
+    else if (a === 'cancel') { S.confirmDep = null; renderFixed(); }
+    else if (a === 'del-dep') { S.confirmDep = null; runFixed('deleteDeposit', [id], '削除しました'); }
+    else if (a === 'edit-ratio') { S.editRatio = true; renderFixed(); }
+    else if (a === 'cancel-ratio') { S.editRatio = false; renderFixed(); }
+    else if (a === 'save-ratio') {
+      var ratio = {}; S.m.members.forEach(function(n, i){ ratio[n] = Number($('ratio-' + i).value) || 0; });
+      S.editRatio = false; runFixed('setRatio', [ratio], '割合を保存しました');
+    }
+    return;
+  }
+
+  var sc = ev.target.closest('[data-sc]');
+  if (sc && S.vault) {
+    var sa = sc.dataset.sc, sid = sc.dataset.id, entry = S.vault.data.entries.filter(function(x){ return x.id === sid; })[0];
+    if (sa === 'new') { S.scEdit = null; renderSecret(); setTimeout(function(){ var t = $('se-title'); if (t) t.focus(); }, 50); }
+    else if (sa === 'edit') { S.scEdit = sid; renderSecret(); var sf = $('sc-form'); if (sf) sf.scrollIntoView({behavior:'smooth', block:'center'}); }
+    else if (sa === 'cancel-edit') { S.scEdit = undefined; renderSecret(); }
+    else if (sa === 'gen') { $('se-pass').value = genPassword(); }
+    else if (sa === 'toggle') { S.scShow[sid] = !S.scShow[sid]; renderSecret(); }
+    else if (sa === 'copy-user' && entry) copyText(entry.user);
+    else if (sa === 'copy-pass' && entry) copyText(entry.password);
+    else if (sa === 'ask-del') { S.scConfirm = sid; renderSecret(); }
+    else if (sa === 'cancel-del') { S.scConfirm = null; renderSecret(); }
+    else if (sa === 'delete') { S.scConfirm = null; saveVault({entries:S.vault.data.entries.filter(function(x){ return x.id !== sid; })}, '削除しました'); }
+    else if (sa === 'open-pw') { S.scPwForm = true; renderSecret(); }
+    else if (sa === 'cancel-pw') { S.scPwForm = false; renderSecret(); }
+    return;
+  }
+
+  var b = ev.target.closest('[data-action]'); if (!b || !S.m) return;
+  var act = b.dataset.action;
+  if (act === 'open-proj') { $('proj-form').hidden = false; $('pj-err').textContent = ''; $('pj-name').value = ''; $('pj-b0').value = ''; $('pj-b1').value = ''; $('pj-note').value = ''; setTimeout(function(){ $('pj-name').focus(); }, 50); }
+  else if (act === 'close-proj') $('proj-form').hidden = true;
+  else if (act === 'open-dep') openDepForm();
+  else if (act === 'close-dep') $('dep-form').hidden = true;
+  else if (act === 'open-item') openItemForm(null);
+  else if (act === 'close-item') $('item-form').hidden = true;
+  else if (act === 'stop-item') { $('item-form').hidden = true; runFixed('updateFixedItem', [S.editItem, {active:false}], '来月から表示しません'); }
+  else if (act === 'open-doc') { if (!S.docs) return; $('docfolder-form').hidden = true; $('doc-form').hidden = false; $('doc-err').textContent = ''; }
+  else if (act === 'close-doc') $('doc-form').hidden = true;
+  else if (act === 'open-docfolder') { $('doc-form').hidden = true; $('docfolder-form').hidden = false; $('docfolder-err').textContent = ''; setTimeout(function(){ $('docfolder-name').focus(); }, 50); }
+  else if (act === 'close-docfolder') $('docfolder-form').hidden = true;
+  else if (act === 'open-album-form') { var d = new Date(); $('album-form').hidden = false; $('album-err').textContent = ''; $('album-name').value = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + ' '; setTimeout(function(){ $('album-name').focus(); }, 50); }
+  else if (act === 'close-album-form') $('album-form').hidden = true;
+  else if (act === 'add-photos') { if (S.album) $('album-input').click(); }
+  else if (act === 'close-viewer') closeViewer();
+});
+document.addEventListener('keydown', function(ev){ if (ev.key === 'Escape') closeViewer(); });
+
 /* ---------- 共通のクリック処理 ---------- */
 document.addEventListener('submit', function(ev){
   var f = ev.target.closest('[data-form="est"]'); if (!f) return;
@@ -416,7 +1021,13 @@ document.addEventListener('click', function(ev){
   var pr = ev.target.closest('[data-pri]'); if (pr) { setPri(pr.dataset.pri); return; }
   var ow = ev.target.closest('[data-owner]'); if (ow) { setOwner(ow.dataset.owner); return; }
   var fl = ev.target.closest('[data-filter]'); if (fl) { S.tdFilter = fl.dataset.filter; renderTodo(); return; }
-  var rf = ev.target.closest('[data-refresh]'); if (rf) { if (!S.busy) { setBusy(true); loadAll().then(function(){ setBusy(false); toast('最新の状態にしました'); }); } return; }
+  var rf = ev.target.closest('[data-refresh]'); if (rf) {
+    if (S.busy) return;
+    var what = rf.dataset.refresh;
+    if (what === 'docs') { S.docs = null; openDocs(); return; }
+    if (what === 'photos') { S.albums = null; openPhotos(); return; }
+    setBusy(true); loadAll().then(function(){ setBusy(false); toast('最新の状態にしました'); }); return;
+  }
   var b = ev.target.closest('[data-action]'); if (!b || S.busy || !S.m) return;
   var a = b.dataset.action, id = b.dataset.id;
   if (a === 'open-exp') openExp(null);
