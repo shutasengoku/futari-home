@@ -51,7 +51,7 @@ function runTodo(fn, args, okMsg){
 }
 
 /* ---------- 画面の切り替え ---------- */
-var VIEWS = ['home','money','fixed','todo','docs','photos','album','secret'];
+var VIEWS = ['home','money','project','fixed','todo','docs','photos','album','secret'];
 function parseHash(){
   var h = decodeURIComponent((location.hash || '').replace('#', ''));
   var parts = h.split('/'), v = parts[0];
@@ -65,7 +65,8 @@ function show(view, param){
   VIEWS.forEach(function(v){ $('v-' + v).hidden = v !== view; });
   closeViewer();
   if (view === 'home') renderHome();
-  if (view === 'money') renderMoney();
+  if (view === 'money') renderMoneyHub();
+  if (view === 'project') { if (S.param) S.project = S.param; renderMoney(); }
   if (view === 'fixed') renderFixed();
   if (view === 'todo') renderTodo();
   if (view === 'docs') openDocs();
@@ -137,7 +138,6 @@ function loadAll(){
 
 function buildStatic(){
   var m = S.m;
-  $('project').innerHTML = m.projects.map(function(p){ return '<option' + (p.name === S.project ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('');
   var opts = m.categories.map(function(c){ return '<option>' + esc(c) + '</option>'; }).join('');
   $('ex-cat').innerHTML = opts; $('wi-cat').innerHTML = opts;
   $('ex-payer').innerHTML = m.members.map(function(n, i){ return '<button type="button" class="m' + i + '" data-payer="' + esc(n) + '" aria-pressed="' + (n === S.payer) + '">' + esc(n) + '</button>'; }).join('');
@@ -160,22 +160,18 @@ function renderHome(){
   if (!S.m) return;
   renderClock();
 
-  var t = moneyTotals(), M = S.m.members, left = t.total - t.used;
-  var segs = M.map(function(n, i){ return '<span class="seg-m' + i + '" style="width:' + pct(t.spent[n], Math.max(t.total, t.used)) + '%"></span>'; }).join('');
-  $('tile-money').innerHTML =
-    '<div class="t-head"><span class="t-name">お金</span><span class="t-go">→</span></div>' +
-    '<div class="t-sub">' + esc(S.project) + ' の残り</div>' +
-    '<div class="t-big num' + (left < 0 ? ' over' : '') + '">' + sYen(left) + '</div>' +
-    '<div class="bar thin">' + segs + '</div>' +
-    '<div class="t-sub num">予算 ' + man(t.total) + '</div>';
-
+  var M = S.m.members;
   var fx = fixedMonth(S.f.thisMonth);
-  var depState = M.map(function(n){ return esc(n) + (fx.deposited[n] >= fx.target[n] && fx.target[n] > 0 ? ' 入金済み' : ' 未入金'); }).join('<br>');
-  $('tile-fixed').innerHTML =
-    '<div class="t-head"><span class="t-name">固定費</span><span class="t-go">→</span></div>' +
-    '<div class="t-sub">' + monthLabel(S.f.thisMonth) + 'の合計</div>' +
-    '<div class="t-big num">' + yen(fx.total) + '</div>' +
-    '<div class="t-sub">' + (fx.lines.length ? depState : '項目を登録してください') + '</div>';
+  var depOk = M.filter(function(n){ return fx.target[n] > 0 && fx.deposited[n] >= fx.target[n]; }).length;
+  var actives = S.m.projects.filter(function(p){ return p.status !== '完了'; });
+  var rows = '<div class="t-row"><span class="l">固定費（' + (+S.f.thisMonth.split('-')[1]) + '月）' + (fx.lines.length ? '・入金 ' + depOk + '/' + M.length + '人' : '') + '</span><b class="num">' + yen(fx.total) + '</b></div>';
+  rows += actives.slice(0, 3).map(function(p){
+    var tt = projTotals(p.name), l = tt.total - tt.used;
+    return '<div class="t-row"><span class="l">' + esc(p.name) + ' の残り</span><b class="num' + (l < 0 ? ' over' : '') + '">' + sYen(l) + '</b></div>';
+  }).join('');
+  $('tile-money').innerHTML =
+    '<div class="t-head"><span class="t-name">お金</span><span class="t-go">開く →</span></div>' +
+    '<div class="t-rows">' + rows + '</div>';
   $('tile-secret-state').textContent = S.vault && S.vault.key ? '🔓 開いています' : '🔒 ロック中';
 
   var open = openTodos(), today = S.t.today;
@@ -244,6 +240,38 @@ function proj(){ return S.m.projects.filter(function(p){ return p.name === S.pro
 function exps(){ return S.m.expenses.filter(function(e){ return e.project === S.project; }); }
 function wishesAll(){ return S.m.wishes.filter(function(w){ return w.project === S.project; }); }
 function wishesOpen(){ return wishesAll().filter(function(w){ return w.status !== '購入済み'; }); }
+function projTotals(name){ var keep = S.project; S.project = name; var t = moneyTotals(); S.project = keep; return t; }
+
+/* お金の入り口：固定費とプロジェクトを並べる */
+function renderMoneyHub(){
+  if (!S.m) return;
+  var M = S.m.members, fx = fixedMonth(S.f.thisMonth);
+  var dep = M.map(function(n){ return esc(n) + (fx.target[n] > 0 && fx.deposited[n] >= fx.target[n] ? ' 入金済み' : ' あと' + yen(Math.max(0, fx.target[n] - fx.deposited[n]))); }).join('・');
+  $('mh-monthly').innerHTML = '<button class="mcard c-fixed" type="button" data-go="fixed">' +
+    '<div class="m-head"><span class="m-name">固定費（共通口座）</span><span class="m-sub">開く →</span></div>' +
+    '<div class="m-sub">' + monthLabel(S.f.thisMonth) + 'の合計</div>' +
+    '<div class="m-big num">' + yen(fx.total) + '</div>' +
+    '<div class="bar thin"><span style="width:' + pct(fx.paid, fx.total) + '%;background:var(--fixed-ink)"></span></div>' +
+    '<div class="m-sub">' + (fx.lines.length ? '引き落とし済み ' + yen(fx.paid) + '｜' + dep : '家賃や光熱費を登録しましょう') + '</div></button>';
+  var card = function(p, done){
+    var t = projTotals(p.name), left = t.total - t.used, scale = Math.max(t.total, t.used);
+    var segs = M.map(function(n, i){ return '<span class="seg-m' + i + '" style="width:' + pct(t.spent[n], scale) + '%"></span>'; }).join('');
+    return '<button class="mcard ' + (done ? 'done' : 'c-money') + '" type="button" data-proj="' + esc(p.name) + '">' +
+      '<div class="m-head"><span class="m-name">' + esc(p.name) + '</span><span class="m-sub">' + (done ? '完了' : '開く →') + '</span></div>' +
+      (p.note ? '<div class="m-sub">' + esc(p.note) + '</div>' : '') +
+      '<div class="m-big num' + (left < 0 ? ' over' : '') + '">' + (done ? yen(t.used) : sYen(left)) + '<span class="m-sub" style="font-size:12px;margin-left:6px">' + (done ? '使った額' : '残り') + ' / 予算 ' + man(t.total) + '</span></div>' +
+      '<div class="bar thin">' + segs + '</div></button>';
+  };
+  var actives = S.m.projects.filter(function(p){ return p.status !== '完了'; });
+  var done = S.m.projects.filter(function(p){ return p.status === '完了'; });
+  $('mh-projects').innerHTML = actives.length ? actives.map(function(p){ return card(p, false); }).join('') :
+    '<div class="list"><div class="empty">進行中のプロジェクトはありません。旅行や家具の買い替えなど、予算を決めて使うときに作りましょう。</div></div>';
+  $('mh-toggle-done').hidden = !done.length;
+  $('mh-toggle-done').textContent = (S.showDoneProj ? '▾ ' : '▸ ') + '完了したプロジェクト（' + done.length + '）';
+  $('mh-done').hidden = !S.showDoneProj || !done.length;
+  $('mh-done').innerHTML = done.map(function(p){ return card(p, true); }).join('');
+}
+
 function moneyTotals(){
   var spent = {}; S.m.members.forEach(function(n){ spent[n] = 0; });
   exps().forEach(function(e){ if (spent[e.payer] !== undefined) spent[e.payer] += e.amount; });
@@ -257,6 +285,12 @@ function moneyTotals(){
 
 function renderMoney(){
   if (!S.m) return;
+  var pj = S.m.projects.filter(function(p){ return p.name === S.project; })[0];
+  if (!pj) { go('money'); return; }
+  $('proj-title').textContent = pj.name;
+  $('proj-status').innerHTML = pj.status === '完了'
+    ? '<span>このプロジェクトは完了しています。</span><button type="button" data-pstatus="進行中">進行中に戻す</button>'
+    : '<button type="button" data-pstatus="完了">このプロジェクトを完了にする（お金の画面で下にしまわれます）</button>';
   var t = moneyTotals(), M = S.m.members;
   $('proj-note').textContent = proj().note || '';
   var left = t.total - t.used, after = left - t.planned, scale = Math.max(t.total, t.used + t.planned);
@@ -366,11 +400,7 @@ $('wish-form').addEventListener('submit', function(ev){
 });
 ['ex-item','ex-amount'].forEach(function(id){ $(id).addEventListener('input', function(){ $('ex-err').textContent = ''; }); });
 $('wi-item').addEventListener('input', function(){ $('wi-err').textContent = ''; });
-$('project').addEventListener('change', function(){
-  S.project = this.value; S.confirmExp = S.confirmWish = S.editWish = null;
-  try { localStorage.setItem('futari-project', S.project); } catch(e) {}
-  closeExp(); $('wish-form').hidden = true; renderMoney();
-});
+
 
 /* ---------- やること ---------- */
 function openTodos(){
@@ -439,8 +469,7 @@ $('proj-form').addEventListener('submit', function(ev){
   setBusy(true);
   api('addProject', p).then(function(d){
     S.m = d; S.project = name;
-    try { localStorage.setItem('futari-project', name); } catch(e) {}
-    setBusy(false); buildStatic(); renderMoney(); toast('「' + name + '」を作りました');
+    setBusy(false); buildStatic(); go('project', name); toast('「' + name + '」を作りました');
   }).catch(function(e){ setBusy(false); $('proj-form').hidden = false; $('pj-err').textContent = errMsg(e); });
 });
 
@@ -891,7 +920,18 @@ $('sc-lock').addEventListener('click', function(){ lockVault(); renderHomeSecret
 document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'hidden' && S.vault) { lockVault(); renderHomeSecretState(); } });
 
 /* ---------- 新しい画面のボタン ---------- */
+$('mh-toggle-done').addEventListener('click', function(){ S.showDoneProj = !S.showDoneProj; renderMoneyHub(); });
 document.addEventListener('click', function(ev){
+  var pc = ev.target.closest('[data-proj]'); if (pc) { go('project', pc.dataset.proj); return; }
+  var ps = ev.target.closest('[data-pstatus]');
+  if (ps && !S.busy) {
+    var st = ps.dataset.pstatus, nm = S.project;
+    setBusy(true);
+    api('setProjectStatus', nm, st).then(function(d){ S.m = d; setBusy(false); toast(st === '完了' ? '「' + nm + '」を完了にしました' : '進行中に戻しました'); if (st === '完了') go('money'); else renderMoney(); })
+      .catch(function(e){ setBusy(false); toast(errMsg(e)); });
+    return;
+  }
+
   if (S.view === 'secret') touchVault();
   var dw = ev.target.closest('[data-depwho]');
   if (dw) {

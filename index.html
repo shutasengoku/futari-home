@@ -52,8 +52,7 @@
       <input type="file" id="photo-input" accept="image/*" hidden>
     </div>
     <div class="tiles">
-      <button class="tile half c-money" type="button" data-go="money" id="tile-money"></button>
-      <button class="tile half c-fixed" type="button" data-go="fixed" id="tile-fixed"></button>
+      <button class="tile wide c-money" type="button" data-go="money" id="tile-money"></button>
       <button class="tile wide c-todo" type="button" data-go="todo" id="tile-todo"></button>
       <button class="tile small c-docs" type="button" data-go="docs"><span class="t-name">書類</span><span class="t-sub">契約書・保証書など</span></button>
       <button class="tile small c-photos" type="button" data-go="photos"><span class="t-name">写真</span><span class="t-sub">思い出のアルバム</span></button>
@@ -65,28 +64,50 @@
     </div>
   </div>
 
-  <!-- お金 -->
+  <!-- お金（入り口） -->
   <div class="view" id="v-money" hidden>
     <div class="bar-top">
-      <div class="proj">
+      <div>
         <button class="back" type="button" data-go="home">← ホーム</button>
-        <select id="project" aria-label="プロジェクト"></select>
-        <div class="note" id="proj-note"></div>
-        <button class="link-btn" type="button" data-action="open-proj">＋ 新しいプロジェクト（旅行・買い替えなど）</button>
+        <h1>お金</h1>
       </div>
       <button class="refresh" type="button" data-refresh="money">更新</button>
     </div>
-    <form class="form" id="proj-form" hidden novalidate>
-      <div class="ftitle">新しいプロジェクト</div>
-      <div class="field"><label for="pj-name">名前</label><input id="pj-name" maxlength="40" placeholder="例：2027年 夏の旅行"></div>
-      <div class="grid2">
-        <div class="field"><label for="pj-b0" id="pj-b0-label">予算</label><input id="pj-b0" type="number" inputmode="numeric" min="0" step="1" placeholder="0"></div>
-        <div class="field"><label for="pj-b1" id="pj-b1-label">予算</label><input id="pj-b1" type="number" inputmode="numeric" min="0" step="1" placeholder="0"></div>
+    <section>
+      <div class="sec-head"><h2>毎月のお金</h2></div>
+      <div class="money-cards" id="mh-monthly"></div>
+    </section>
+    <section>
+      <div class="sec-head"><h2>予算のプロジェクト</h2><button class="btn" type="button" data-action="open-proj">＋ 新しく作る</button></div>
+      <form class="form" id="proj-form" hidden novalidate>
+        <div class="ftitle">新しいプロジェクト</div>
+        <div class="field"><label for="pj-name">名前</label><input id="pj-name" maxlength="40" placeholder="例：2027年 夏の旅行"></div>
+        <div class="grid2">
+          <div class="field"><label for="pj-b0" id="pj-b0-label">予算</label><input id="pj-b0" type="number" inputmode="numeric" min="0" step="1" placeholder="0"></div>
+          <div class="field"><label for="pj-b1" id="pj-b1-label">予算</label><input id="pj-b1" type="number" inputmode="numeric" min="0" step="1" placeholder="0"></div>
+        </div>
+        <div class="field"><label for="pj-note">メモ（任意）</label><input id="pj-note" maxlength="100" placeholder="例：沖縄3泊、ホテル代込み"></div>
+        <div class="err" id="pj-err"></div>
+        <div class="actions"><button type="button" class="btn ghost" data-action="close-proj">やめる</button><button type="submit" class="btn">作る</button></div>
+      </form>
+      <div class="money-cards" id="mh-projects"></div>
+    </section>
+    <div>
+      <button class="toggle-done" type="button" id="mh-toggle-done"></button>
+      <div class="money-cards" id="mh-done" hidden></div>
+    </div>
+  </div>
+
+  <!-- お金：プロジェクトの中 -->
+  <div class="view" id="v-project" hidden>
+    <div class="bar-top">
+      <div class="proj">
+        <button class="back" type="button" data-go="money">← お金</button>
+        <h1 id="proj-title"></h1>
+        <div class="note" id="proj-note"></div>
       </div>
-      <div class="field"><label for="pj-note">メモ（任意）</label><input id="pj-note" maxlength="100" placeholder="例：沖縄3泊、ホテル代込み"></div>
-      <div class="err" id="pj-err"></div>
-      <div class="actions"><button type="button" class="btn ghost" data-action="close-proj">やめる</button><button type="submit" class="btn">作る</button></div>
-    </form>
+      <button class="refresh" type="button" data-refresh="money">更新</button>
+    </div>
 
     <div class="hero" id="hero"></div>
     <div>
@@ -144,6 +165,7 @@
       <div class="sec-head"><h2>カテゴリ別</h2><span class="meta">濃い色が使った額、斜線が買いたいものの予算</span></div>
       <div class="list" id="cat-list"></div>
     </section>
+    <div class="home-foot" id="proj-status"></div>
     <div class="sheet-link" id="money-sheet-link"></div>
   </div>
 
@@ -184,7 +206,7 @@
   <div class="view" id="v-fixed" hidden>
     <div class="bar-top">
       <div>
-        <button class="back" type="button" data-go="home">← ホーム</button>
+        <button class="back" type="button" data-go="money">← お金</button>
         <h1>固定費</h1>
         <div class="note">ふたりの共通口座から払うもの</div>
       </div>

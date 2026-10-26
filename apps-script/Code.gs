@@ -74,6 +74,7 @@ const ACTIONS = {
   logout:          (me)    => logout_(me),
   // お金：プロジェクト
   addProject:      (me, a) => addProject_(me, a[0]),
+  setProjectStatus:(me, a) => setProjectStatus_(me, a[0], a[1]),
   // 固定費（共通口座）
   getFixed:        (me)    => fixedData_(me),
   addFixedItem:    (me, a) => addFixedItem_(me, a[0]),
@@ -366,6 +367,17 @@ function addProject_(me, p) {
     if (row < 2) row = col.length + 2;
     sh.getRange(row, 1, 1, 5).setValues([[name, '進行中', Utilities.formatDate(new Date(), TZ, 'yyyy/MM/dd'), b0, b1]]);
     sh.getRange(row, 7).setValue(clean_(p.note, 100));
+  });
+}
+
+function setProjectStatus_(me, name, status) {
+  const st = ['進行中', '予定', '完了'].indexOf(status) >= 0 ? status : '進行中';
+  return moneyWrite_(me, ss => {
+    const sh = ss.getSheetByName(SH.conf);
+    const col = sh.getRange(2, 1, Math.max(sh.getLastRow() - 1, 1), 1).getValues();
+    const i = col.findIndex(r => String(r[0]).trim() === String(name));
+    if (i < 0) throw err_('このプロジェクトは見つかりませんでした。');
+    sh.getRange(i + 2, 2).setValue(st);
   });
 }
 
