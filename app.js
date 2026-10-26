@@ -90,6 +90,8 @@ function showLogin(msg){
   $('v-login').hidden = false;
   $('login-msg').textContent = msg || '';
   $('login-msg').hidden = !msg;
+  var inApp = /\bLine\/|FBAN|FBAV|Instagram|MicroMessenger|; wv\)/.test(navigator.userAgent || '');
+  $('inapp-note').hidden = !inApp;
   renderGoogleButton();
 }
 function renderGoogleButton(){
@@ -814,7 +816,7 @@ $('album-input').addEventListener('change', function(){
 /* ---------- 機密（ブラウザの中で暗号化） ---------- */
 var VAULT_ITER = 600000, LOCK_MS = 5 * 60 * 1000;
 var SC_CATS = ['Wi-Fi・家', '銀行・カード', '契約・会員番号', 'ネット・サブスク', 'その他'];
-var TE = new TextEncoder(), TD = new TextDecoder();
+var TE = window.TextEncoder ? new TextEncoder() : null, TD = window.TextDecoder ? new TextDecoder() : null;
 function b64(buf){ var s = '', a = new Uint8Array(buf); for (var i = 0; i < a.length; i++) s += String.fromCharCode(a[i]); return btoa(s); }
 function unb64(s){ var bin = atob(s), a = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return a; }
 function deriveKey(pw, salt, iter){
@@ -844,7 +846,7 @@ function lockVault(){
 }
 function touchVault(){ clearTimeout(S.lockTimer); if (S.vault) S.lockTimer = setTimeout(function(){ lockVault(); toast('しばらく操作がなかったのでロックしました'); }, LOCK_MS); }
 function openSecret(){
-  if (!window.crypto || !crypto.subtle) { $('sc-body').innerHTML = '<div class="sc-card"><p class="warn">このブラウザでは機密を開けません。SafariかChromeで開いてください。</p></div>'; return; }
+  if (!window.crypto || !crypto.subtle || !TE) { $('sc-body').innerHTML = '<div class="sc-card"><p class="warn">このブラウザでは機密を開けません。SafariかChromeで開いてください。</p></div>'; return; }
   if (S.vault) { renderSecret(); return; }
   $('sc-body').innerHTML = '<div class="sc-card"><p>読み込み中…</p></div>';
   api('getVault').then(function(d){ S.vaultMeta = d; if (S.view === 'secret') renderSecret(); })
@@ -1336,6 +1338,7 @@ document.addEventListener('click', function(ev){
 document.addEventListener('keydown', function(ev){ if (ev.key === 'Escape' && S.editWish) { S.editWish = null; renderMoney(); } });
 document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible' && S.m && !S.busy) loadAll(); });
 $('logout-btn').addEventListener('click', function(){ if (!S.busy) logout(); });
+$('copy-url').addEventListener('click', function(){ copyText(location.origin + location.pathname); });
 
 if (!CFG.apiUrl || !CFG.clientId || /ここに/.test(CFG.apiUrl + CFG.clientId)) {
   banner('準備中です。config.js に窓口のURLとクライアントIDが入ると使えるようになります。', true);

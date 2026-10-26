@@ -14,6 +14,15 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Maru+Gothic:wght@500;700&display=swap">
 <link rel="stylesheet" href="app.css">
+<script>
+// LINEの中のブラウザではGoogleにログインできないので、いつものブラウザ（Safari・Chrome）で開き直す
+(function(){
+  var ua = navigator.userAgent || '';
+  if (/\bLine\//.test(ua) && !/openExternalBrowser=1/.test(location.search)) {
+    location.replace(location.origin + location.pathname + (location.search ? location.search + '&' : '?') + 'openExternalBrowser=1' + location.hash);
+  }
+})();
+</script>
 </head>
 <body>
 <div class="wrap" id="app">
@@ -29,6 +38,10 @@
       <div id="g-button" class="g-button"></div>
       <p class="login-msg" id="login-msg" hidden></p>
       <p class="login-note">使えるのは登録されたふたりのアカウントだけです。一度ログインすると30日間はそのまま使えます。</p>
+      <div class="inapp" id="inapp-note" hidden>
+        <p>このアプリの中のブラウザでは、Googleにログインできません。右上か右下のメニューから「ブラウザで開く」を選ぶか、URLをコピーしてSafariかChromeで開いてください。</p>
+        <button class="btn ghost" type="button" id="copy-url">URLをコピー</button>
+      </div>
     </div>
   </div>
 
@@ -411,6 +424,13 @@
 </div>
 <div class="toast" id="toast" hidden></div>
 
+<script>
+// 予期しないエラーで真っ白にならないように、内容を画面に出す
+window.addEventListener('error', function(e){
+  var b = document.getElementById('banner');
+  if (b) { b.hidden = false; b.className = 'banner err'; b.textContent = 'うまく表示できませんでした。ページを開き直してください。（' + (e.message || 'エラー') + '）'; }
+});
+</script>
 <script src="config.js"></script>
 <script src="app.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>

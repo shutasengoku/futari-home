@@ -298,3 +298,6 @@ input,select.in{font:inherit;color:var(--ink);background:var(--bg);border:1px so
 .ledger .lrow.calc{background:var(--fixed-bg);color:var(--fixed-ink)}
 .ledger .lrow.calc .k{color:inherit}
 .ledger .lrow.total .k{color:var(--ink);font-weight:500}
+
+.inapp{display:flex;flex-direction:column;gap:8px;align-items:center;background:var(--fixed-bg);color:var(--fixed-ink);border-radius:12px;padding:12px 14px;margin-top:6px}
+.inapp p{margin:0;font-size:13px;text-align:left}
