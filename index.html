@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>ふたりのホーム</title>
+<meta name="theme-color" content="#F2F4F1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#131816" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-title" content="ふたりのホーム">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Maru+Gothic:wght@500;700&display=swap">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="wrap" id="app">
+  <div id="banner" class="banner">読み込んでいます…</div>
+
+  <!-- ログイン -->
+  <div class="view login" id="v-login" hidden>
+    <div class="login-card">
+      <div class="login-mark" aria-hidden="true"><span class="lm0"></span><span class="lm1"></span></div>
+      <div class="eyebrow">しゅうくんとあいちゃんの</div>
+      <h1>ふたりのホーム</h1>
+      <p class="login-text">お金・やること・書類・写真をまとめておく、ふたり専用の場所です。Googleアカウントでログインしてください。</p>
+      <div id="g-button" class="g-button"></div>
+      <p class="login-msg" id="login-msg" hidden></p>
+      <p class="login-note">使えるのは登録されたふたりのアカウントだけです。一度ログインすると30日間はそのまま使えます。</p>
+    </div>
+  </div>
+
+  <!-- ホーム -->
+  <div class="view" id="v-home" hidden>
+    <div class="greet">
+      <div class="g-top">
+        <span class="eyebrow">ふたりのホーム</span>
+        <button class="photo-btn" id="photo-btn" type="button">写真を追加</button>
+      </div>
+      <div class="hero-card" id="hero-card">
+        <img id="hero-img" alt="ふたりの写真" hidden>
+        <div class="hero-text">
+          <div class="g-hello" id="greet-title">こんにちは</div>
+          <div class="g-row">
+            <div class="g-date num" id="greet-date"></div>
+            <div class="g-time num" id="greet-time"></div>
+          </div>
+        </div>
+      </div>
+      <input type="file" id="photo-input" accept="image/*" hidden>
+    </div>
+    <div class="tiles">
+      <button class="tile wide c-money" type="button" data-go="money" id="tile-money"></button>
+      <button class="tile wide c-todo" type="button" data-go="todo" id="tile-todo"></button>
+      <a class="tile small c-docs" id="tile-docs" target="_blank" rel="noopener"><span class="t-name">書類</span><span class="t-sub">契約書・保証書など</span><span class="t-go">ドライブで開く ↗</span></a>
+      <a class="tile small c-photos" id="tile-photos" target="_blank" rel="noopener"><span class="t-name">写真</span><span class="t-sub">思い出の写真</span><span class="t-go">ドライブで開く ↗</span></a>
+      <div class="tile small c-secret"><span class="t-name">機密</span><span class="t-sub">パスワードなど</span><span class="t-go">準備中</span></div>
+    </div>
+    <div class="home-foot">
+      <a id="root-link" target="_blank" rel="noopener">ドライブの「ふたりのホーム」を開く</a>
+      <button type="button" id="logout-btn">ログアウト</button>
+    </div>
+  </div>
+
+  <!-- お金 -->
+  <div class="view" id="v-money" hidden>
+    <div class="bar-top">
+      <div class="proj">
+        <button class="back" type="button" data-go="home">← ホーム</button>
+        <select id="project" aria-label="プロジェクト"></select>
+        <div class="note" id="proj-note"></div>
+      </div>
+      <button class="refresh" type="button" data-refresh="money">更新</button>
+    </div>
+
+    <div class="hero" id="hero"></div>
+    <div>
+      <div class="people" id="people"></div>
+      <div class="balance" id="balance"></div>
+    </div>
+
+    <section>
+      <div class="sec-head">
+        <h2>かかった費用</h2>
+        <button class="btn" type="button" data-action="open-exp">＋ 記録する</button>
+      </div>
+      <form class="form" id="exp-form" hidden novalidate>
+        <div class="ftitle" id="exp-form-title">支出を記録</div>
+        <div class="field"><label for="ex-item">項目</label><input id="ex-item" placeholder="例：引越し業者、敷金、冷蔵庫" maxlength="60"></div>
+        <div class="grid2">
+          <div class="field"><label for="ex-amount">金額（円）</label><input id="ex-amount" type="number" inputmode="numeric" min="1" step="1" placeholder="0"></div>
+          <div class="field"><label for="ex-date">日付</label><input id="ex-date" type="date"></div>
+        </div>
+        <div class="field"><span class="lab">払った人</span><div class="seg" id="ex-payer"></div></div>
+        <div class="field"><label for="ex-cat">カテゴリ</label><select class="in" id="ex-cat"></select></div>
+        <div class="field"><label for="ex-memo">メモ（任意）</label><input id="ex-memo" maxlength="200" placeholder="例：〇〇引越センター"></div>
+        <div class="err" id="ex-err"></div>
+        <div class="actions"><button type="button" class="btn ghost" data-action="close-exp">やめる</button><button type="submit" class="btn" id="ex-submit">記録する</button></div>
+      </form>
+      <div class="list" id="exp-list"></div>
+    </section>
+
+    <section>
+      <div class="sec-head">
+        <h2>買いたいもの</h2>
+        <button class="btn" type="button" data-action="open-wish">＋ 追加</button>
+      </div>
+      <form class="form" id="wish-form" hidden novalidate>
+        <div class="ftitle">買いたいものを追加</div>
+        <div class="field"><label for="wi-item">品名</label><input id="wi-item" placeholder="例：洗濯機、カーテン" maxlength="60"></div>
+        <div class="field"><label for="wi-note">メモ（サイズ・候補など）</label><input id="wi-note" placeholder="例：幅100cm、窓2枚分" maxlength="120"></div>
+        <div class="grid2">
+          <div class="field"><label for="wi-est">予算（円・空欄OK）</label><input id="wi-est" type="number" inputmode="numeric" min="0" step="1" placeholder="未定"></div>
+          <div class="field"><label for="wi-cat">カテゴリ</label><select class="in" id="wi-cat"></select></div>
+        </div>
+        <div class="field"><span class="lab">優先度</span>
+          <div class="seg" id="wi-pri">
+            <button type="button" class="neutral" data-pri="入居までに必要" aria-pressed="false">入居までに必要</button>
+            <button type="button" class="neutral" data-pri="あとででOK" aria-pressed="true">あとででOK</button>
+          </div>
+        </div>
+        <div class="err" id="wi-err"></div>
+        <div class="actions"><button type="button" class="btn ghost" data-action="close-wish">やめる</button><button type="submit" class="btn">追加する</button></div>
+      </form>
+      <div class="list" id="wish-list"></div>
+    </section>
+
+    <section>
+      <div class="sec-head"><h2>カテゴリ別</h2><span class="meta">濃い色が使った額、斜線が買いたいものの予算</span></div>
+      <div class="list" id="cat-list"></div>
+    </section>
+    <div class="sheet-link" id="money-sheet-link"></div>
+  </div>
+
+  <!-- やること -->
+  <div class="view" id="v-todo" hidden>
+    <div class="bar-top">
+      <div>
+        <button class="back" type="button" data-go="home">← ホーム</button>
+        <h1>やること</h1>
+      </div>
+      <button class="refresh" type="button" data-refresh="todo">更新</button>
+    </div>
+
+    <form class="add-todo" id="todo-form" novalidate>
+      <div class="add-row">
+        <input id="td-title" maxlength="80" placeholder="やることを入力" aria-label="やること">
+        <button class="btn" type="submit">追加</button>
+      </div>
+      <div class="field"><span class="lab">担当</span><div class="seg" id="td-owner"></div></div>
+      <div class="grid2">
+        <div class="field"><label for="td-due">期限（任意）</label><input id="td-due" type="date"></div>
+        <div class="field"><label for="td-list">リスト</label><input id="td-list" list="td-lists" maxlength="30" placeholder="例：引越し"></div>
+      </div>
+      <datalist id="td-lists"></datalist>
+      <div class="err" id="td-err"></div>
+    </form>
+
+    <div class="filters" id="td-filters"></div>
+    <div id="todo-groups" style="display:flex;flex-direction:column;gap:16px"></div>
+    <div>
+      <button class="toggle-done" type="button" id="toggle-done"></button>
+      <div class="list" id="todo-done" hidden></div>
+    </div>
+    <div class="sheet-link" id="todo-sheet-link"></div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</body>
+</html>
