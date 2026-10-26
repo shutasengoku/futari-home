@@ -50,17 +50,21 @@ function doPost(e) {
     const me = auth_(req.session);
     const fn = ACTIONS[req.action];
     if (!fn) throw err_('不明な操作です。', 'bad_request');
-    return json_({ ok: true, data: fn(me, req.args || []) });
+    const data = fn(me, req.args || []);
+    if (READ_ACTIONS.indexOf(req.action) < 0) bumpCache_();   // 書き込んだら覚えておいた内容を捨てる
+    return json_({ ok: true, data: data });
   } catch (err) {
     return json_({ ok: false, error: String((err && err.message) || err), code: (err && err.code) || 'error' });
   }
 }
 
 const ACTIONS = {
-  getAll:          (me)    => getAll_(me),
+  getAll:          (me, a) => getAll_(me, a[0] && a[0].fresh),
   getData:         (me)    => moneyData_(me),
   getTodos:        (me)    => todoData_(),
   getHomePhoto:    (me)    => getHomePhoto_(),
+  getHomePhotoList:(me)    => homePhotoList_(),
+  getPhoto:        (me, a) => homePhoto_(a[0]),
   uploadHomePhoto: (me, a) => uploadHomePhoto_(a[0], a[1]),
   addExpense:      (me, a) => addExpense_(me, a[0]),
   deleteExpense:   (me, a) => deleteExpense_(me, a[0]),
@@ -146,10 +150,11 @@ function auth_(session) {
   if (!raw) throw err_('ログインの有効期限が切れました。もう一度ログインしてください。', 'auth');
   const s = JSON.parse(raw);
   if (s.exp < Date.now()) { props.deleteProperty(key); throw err_('ログインの有効期限が切れました。もう一度ログインしてください。', 'auth'); }
-  const ss = money_();
-  const conf = settings_(ss, s.email);
+  const conf = confCached_(s.email);
   if (!conf.allowed) { props.deleteProperty(key); throw err_('このアカウントは使えません。', 'forbidden'); }
-  return { email: s.email, member: conf.meMember, members: conf.members.map(m => m.name), conf: conf, ss: ss, key: key };
+  const me = { email: s.email, member: conf.meMember, members: conf.members.map(m => m.name), conf: conf, key: key };
+  Object.defineProperty(me, 'ss', { get: function () { return this._ss || (this._ss = money_()); } });   // 台帳は必要なときだけ開く
+  return me;
 }
 
 function logout_(me) {
@@ -174,13 +179,52 @@ function hash_(s) {
  * 読み込み
  * ======================================================= */
 
-function getAll_(me) {
-  const folders = {};
-  Object.keys(FOLDERS).forEach(k => folders[k] = 'https://drive.google.com/drive/folders/' + FOLDERS[k]);
-  return {
-    me: { email: me.email, member: me.member, members: me.members },
-    money: moneyData_(me), todos: todoData_(), fixed: fixedData_(me), home: homeData_(), folders: folders
-  };
+function getAll_(me, fresh) {
+  let body = fresh ? null : cacheGet_('all');
+  if (!body) {
+    const folders = {};
+    Object.keys(FOLDERS).forEach(k => folders[k] = 'https://drive.google.com/drive/folders/' + FOLDERS[k]);
+    body = { money: moneyData_(me), todos: todoData_(), fixed: fixedData_(me), home: homeData_(), folders: folders };
+    cachePut_('all', body);
+  }
+  body.money.meMember = me.member;   // 見ている人ごとに違うところだけ差し替える
+  body.me = { email: me.email, member: me.member, members: me.members };
+  return body;
+}
+
+/* =========================================================
+ * 速くするための一時保存（Googleのキャッシュ。最大10分、書き込むと捨てる）
+ * ======================================================= */
+
+const CACHE_TTL = 600;
+const READ_ACTIONS = ['getAll', 'getData', 'getTodos', 'getFixed', 'getDocs', 'getAlbums', 'getAlbum',
+  'getHomePhoto', 'getHomePhotoList', 'getPhoto', 'getFileData', 'getVault'];
+
+function cacheGen_() { return PropertiesService.getScriptProperties().getProperty('cacheGen') || '0'; }
+function bumpCache_() { PropertiesService.getScriptProperties().setProperty('cacheGen', String(Date.now())); }
+
+function cacheGet_(name) {
+  try {
+    const c = CacheService.getScriptCache(), key = name + '@' + cacheGen_();
+    const n = Number(c.get(key + ':n') || 0);
+    if (!n) return null;
+    const keys = []; for (let i = 0; i < n; i++) keys.push(key + ':' + i);
+    const parts = c.getAll(keys);
+    let s = '';
+    for (let i = 0; i < n; i++) { const p = parts[key + ':' + i]; if (p == null) return null; s += p; }
+    return JSON.parse(s);
+  } catch (e) { return null; }
+}
+
+function cachePut_(name, obj) {
+  try {
+    const s = JSON.stringify(obj), size = 25000, n = Math.ceil(s.length / size);
+    if (n > 40) return;
+    const key = name + '@' + cacheGen_(), out = {};
+    for (let i = 0; i < n; i++) out[key + ':' + i] = s.substr(i * size, size);
+    out[key + ':n'] = String(n);
+    CacheService.getScriptCache().putAll(out, CACHE_TTL);
+  } catch (e) {}
 }
 
 function moneyData_(me) {
@@ -216,7 +260,20 @@ function todoData_() {
 }
 
 /** 台帳「設定」を読む。L列にメールが入っている人だけが allowed */
-function settings_(ss, email) {
+function settings_(ss, email) { return withEmail_(confRaw_(ss), email); }
+
+function withEmail_(raw, email) {
+  const mine = raw.members.find(m => m.email && m.email === email);
+  return { members: raw.members, categories: raw.categories, projects: raw.projects, allowed: !!mine, meMember: mine ? mine.name : '' };
+}
+
+function confCached_(email) {
+  let raw = cacheGet_('conf');
+  if (!raw) { raw = confRaw_(money_()); cachePut_('conf', raw); }
+  return withEmail_(raw, email);
+}
+
+function confRaw_(ss) {
   const conf = ss.getSheetByName(SH.conf);
   const cv = conf.getRange(2, 1, Math.max(conf.getLastRow() - 1, 1), 12).getValues();
   const members = cv
@@ -229,13 +286,31 @@ function settings_(ss, email) {
     if (members[1]) budgets[members[1].name] = Number(r[4]) || 0;
     return { name: String(r[0]).trim(), status: String(r[1] || ''), note: String(r[6] || ''), budgets: budgets };
   });
-  const mine = members.find(m => m.email && m.email === email);
-  return { members: members, categories: categories, projects: projects, allowed: !!mine, meMember: mine ? mine.name : '' };
+  return { members: members, categories: categories, projects: projects };
 }
 
 /* =========================================================
  * ホームの写真
  * ======================================================= */
+
+function homePhotoList_() {
+  let list = cacheGet_('photos');
+  if (list) return list;
+  list = [];
+  const it = DriveApp.getFolderById(FOLDERS.homePhotos).getFiles();
+  while (it.hasNext()) {
+    const f = it.next();
+    if (/^image\//.test(f.getMimeType()) && f.getSize() <= PHOTO_MAX_BYTES) list.push({ id: f.getId() });
+  }
+  cachePut_('photos', list);
+  return list;
+}
+
+function homePhoto_(id) {
+  const f = DriveApp.getFileById(id);
+  if (!isUnder_(f, [FOLDERS.homePhotos])) throw err_('この写真は使えません。');
+  return photoPayload_(f, 0);
+}
 
 function getHomePhoto_() {
   const files = DriveApp.getFolderById(FOLDERS.homePhotos).getFiles();

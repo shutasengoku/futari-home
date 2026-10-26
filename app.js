@@ -30,14 +30,30 @@ function api(action){
     .catch(function(){ throw new Error('通信できませんでした。電波の状態を確認してください。'); })
     .then(function(r){ return r.json().catch(function(){ throw new Error('窓口から正しい返事がありませんでした。'); }); })
     .then(function(res){
-      if (res.ok) return res.data;
-      if (res.code === 'auth' || res.code === 'forbidden') { setSession(''); showLogin(res.error); }
+      if (res.ok) { if (action !== 'login' && action !== 'logout') setTimeout(saveCache, 0); return res.data; }
+      if (res.code === 'auth' || res.code === 'forbidden') { setSession(''); clearLocal(); showLogin(res.error); }
       var e = new Error(res.error || 'うまくいきませんでした。'); e.code = res.code; throw e;
     });
 }
 var call = api;
 function errMsg(e){ return (e && e.message ? e.message : String(e)).replace(/^(Error|Exception):\s*/, ''); }
 function setBusy(b){ S.busy = b; $('app').classList.toggle('busy', b); }
+
+/* ---------- スマホの中に前回の内容を覚えておく（開いた瞬間に表示するため） ---------- */
+var CACHE_KEY = 'futari-cache-v1', PH_PREFIX = 'futari-ph:', PH_INDEX = 'futari-ph-index', PH_LAST = 'futari-ph-last', PH_KEEP = 3;
+function lsGet(k){ try { return localStorage.getItem(k); } catch(e) { return null; } }
+function lsSet(k, v){ try { localStorage.setItem(k, v); return true; } catch(e) { return false; } }
+function lsDel(k){ try { localStorage.removeItem(k); } catch(e) {} }
+function saveCache(){
+  if (!S.m || !S.me) return;
+  lsSet(CACHE_KEY, JSON.stringify({me:S.me, money:S.m, todos:S.t, fixed:S.f, home:S.h, folders:S.folders, at:Date.now()}));
+}
+function readCache(){ try { return JSON.parse(lsGet(CACHE_KEY) || 'null'); } catch(e) { return null; } }
+function clearLocal(){
+  lsDel(CACHE_KEY); lsDel(PH_LAST);
+  var idx = []; try { idx = JSON.parse(lsGet(PH_INDEX) || '[]'); } catch(e) {}
+  idx.forEach(function(id){ lsDel(PH_PREFIX + id); }); lsDel(PH_INDEX);
+}
 
 function runMoney(fn, args, okMsg){
   setBusy(true);
@@ -112,30 +128,44 @@ function onCredential(resp){
   }).catch(function(e){ setBusy(false); $('login-msg').textContent = errMsg(e); $('login-msg').hidden = false; });
 }
 function logout(){
-  var done = function(){ setSession(''); try { google.accounts.id.disableAutoSelect(); } catch(e) {} S.photoAsked = false; S.photo = null; renderPhoto(); showLogin('ログアウトしました。'); };
+  var done = function(){ setSession(''); clearLocal(); try { google.accounts.id.disableAutoSelect(); } catch(e) {} S.photoAsked = false; S.photo = null; renderPhoto(); showLogin('ログアウトしました。'); };
   api('logout').then(done, done);
 }
 
 /* ---------- 読み込み ---------- */
-function loadAll(){
+function applyData(d){
+  var first = !S.m;
+  S.me = d.me; S.m = d.money; S.t = d.todos; S.f = d.fixed; S.h = d.home; S.folders = d.folders; banner(null);
+  if (!S.fxMonth) S.fxMonth = S.f.thisMonth;
+  var names = S.m.projects.map(function(p){ return p.name; });
+  if (names.indexOf(S.project) < 0) {
+    var active = S.m.projects.filter(function(p){ return p.status === '進行中'; })[0];
+    S.project = active ? active.name : (names[0] || '');
+  }
+  if (!S.payer || S.m.members.indexOf(S.payer) < 0) S.payer = S.m.meMember || S.m.members[0] || '';
+  if (!S.tdOwner) S.tdOwner = S.me.member || OWNERS_BOTH;
+  // 入力中のフォームがあるときは、選択肢を作り直さない（選んだものが戻ってしまうため）
+  if (first || !document.querySelector('form.form:not([hidden])')) buildStatic();
+  if (first) { var h = parseHash(); show(h.view, h.param); } else rerender();
+}
+/** 今の画面だけ描き直す（スクロール位置はそのまま） */
+function rerender(){
+  var v = S.view;
+  if (v === 'home') renderHome();
+  else if (v === 'money') renderMoneyHub();
+  else if (v === 'project') renderMoney();
+  else if (v === 'fixed') renderFixed();
+  else if (v === 'todo') renderTodo();
+  else if (v === 'shop') renderShop();
+}
+function loadAll(fresh){
   if (!getSession()) { showLogin(); return Promise.resolve(); }
-  return call('getAll').then(function(d){
-    S.me = d.me; S.m = d.money; S.t = d.todos; S.f = d.fixed; S.h = d.home; S.folders = d.folders; banner(null);
-    if (!S.fxMonth) S.fxMonth = S.f.thisMonth;
-    var names = S.m.projects.map(function(p){ return p.name; });
-    if (names.indexOf(S.project) < 0) {
-      var saved = ''; try { saved = localStorage.getItem('futari-project') || ''; } catch(e) {}
-      var active = S.m.projects.filter(function(p){ return p.status === '進行中'; })[0];
-      S.project = names.indexOf(saved) >= 0 ? saved : (active ? active.name : (names[0] || ''));
-    }
-    if (!S.payer || S.m.members.indexOf(S.payer) < 0) S.payer = S.m.meMember || S.m.members[0] || '';
-    if (!S.tdOwner) S.tdOwner = S.me.member || OWNERS_BOTH;
-    buildStatic();
-    var h = parseHash(); show(h.view, h.param);
-    if (!S.photoAsked) { S.photoAsked = true; loadPhoto(); }
-  }).catch(function(e){
+  if (!S.m) { var c = readCache(); if (c && c.money && c.me) applyData(c); }
+  if (!S.photoAsked) { S.photoAsked = true; startPhoto(); }
+  return call('getAll', fresh ? {fresh:true} : {}).then(applyData).catch(function(e){
     if (e && (e.code === 'auth' || e.code === 'forbidden')) return;
-    banner('読み込めませんでした。' + errMsg(e), true);
+    if (S.m) toast('最新の内容を読み込めませんでした。' + errMsg(e));
+    else banner('読み込めませんでした。' + errMsg(e), true);
   });
 }
 
@@ -186,7 +216,7 @@ function renderHome(){
     '<div class="t-head"><span class="t-name">やること</span><span class="t-go">→</span></div>' +
     '<div class="t-big num">' + open.length + '<span class="t-sub" style="font-size:12px;margin-left:4px">件' + (over ? '・期限切れ' + over : '') + '</span></div>' +
     (open.length ? '<div class="mini-list">' + open.slice(0, 2).map(function(x){ return '<div>' + esc(x.title) + '</div>'; }).join('') + '</div>' : '<div class="t-sub">全部終わりました</div>');
-  var shopOpen = S.h.shop.filter(function(x){ return !x.done; });
+  var shopOpen = S.h ? S.h.shop.filter(function(x){ return !x.done; }) : [];
   $('tile-shop').innerHTML =
     '<div class="t-head"><span class="t-name">買い物</span><span class="t-go">→</span></div>' +
     '<div class="t-big num">' + shopOpen.length + '<span class="t-sub" style="font-size:12px;margin-left:4px">品</span></div>' +
@@ -216,8 +246,33 @@ function renderPhoto(){
     img.hidden = true; img.removeAttribute('src'); card.classList.remove('has-photo');
   }
 }
-function loadPhoto(){
-  call('getHomePhoto').then(function(p){ S.photo = p; renderPhoto(); }).catch(function(){});
+function phIndex(){ try { return JSON.parse(lsGet(PH_INDEX) || '[]'); } catch(e) { return []; } }
+function phStore(id, dataUrl){
+  var idx = phIndex().filter(function(x){ return x !== id; });
+  idx.push(id);
+  while (idx.length > PH_KEEP) lsDel(PH_PREFIX + idx.shift());
+  if (!lsSet(PH_PREFIX + id, dataUrl)) {
+    while (idx.length > 1) lsDel(PH_PREFIX + idx.shift());
+    if (!lsSet(PH_PREFIX + id, dataUrl)) idx = [];
+  }
+  lsSet(PH_INDEX, JSON.stringify(idx));
+}
+function phShow(id, dataUrl){ S.photo = {id:id, dataUrl:dataUrl}; renderPhoto(); }
+/** 前回の写真をすぐ出し、次に開いたとき用の写真を裏で用意しておく */
+function startPhoto(){
+  var last = lsGet(PH_LAST), lastData = last ? lsGet(PH_PREFIX + last) : null;
+  if (lastData) phShow(last, lastData);
+  api('getHomePhotoList').then(function(list){
+    var ids = (list || []).map(function(x){ return x.id; });
+    if (!ids.length) { S.photo = null; renderPhoto(); lsDel(PH_LAST); return; }
+    if (S.photo && ids.indexOf(S.photo.id) < 0) { S.photo = null; renderPhoto(); }
+    var others = ids.filter(function(x){ return !S.photo || x !== S.photo.id; });
+    var pick = (others.length ? others : ids)[Math.floor(Math.random() * (others.length || ids.length))];
+    var cached = lsGet(PH_PREFIX + pick);
+    var use = function(du){ phStore(pick, du); lsSet(PH_LAST, pick); if (!S.photo) phShow(pick, du); };
+    if (cached) use(cached);
+    else api('getPhoto', pick).then(function(p){ if (p && p.dataUrl) use(p.dataUrl); }).catch(function(){});
+  }).catch(function(){});
 }
 function shrinkImage(file, maxSide, quality){
   return new Promise(function(res, rej){
@@ -239,8 +294,8 @@ $('photo-input').addEventListener('change', function(){
   var f = this.files && this.files[0]; this.value = '';
   if (!f) return;
   setBusy(true); toast('写真を保存しています…');
-  shrinkImage(f, 1400, 0.82).then(function(dataUrl){ return call('uploadHomePhoto', dataUrl, f.name); })
-    .then(function(p){ S.photo = p; setBusy(false); renderPhoto(); toast('ホームの写真に追加しました'); })
+  shrinkImage(f, 1200, 0.8).then(function(dataUrl){ return call('uploadHomePhoto', dataUrl, f.name); })
+    .then(function(p){ phStore(p.id, p.dataUrl); lsSet(PH_LAST, p.id); phShow(p.id, p.dataUrl); setBusy(false); toast('ホームの写真に追加しました'); })
     .catch(function(e){ setBusy(false); toast(errMsg(e) || '写真を保存できませんでした。'); });
 });
 
@@ -1270,7 +1325,11 @@ document.addEventListener('click', function(ev){
   var sb = ev.target.closest('[data-shop]');
   if (sb) {
     var id = sb.dataset.id, x = S.h.shop.filter(function(i){ return i.id === id; })[0];
-    if (sb.dataset.shop === 'toggle' && x) runShop('toggleShop', [id, !x.done]);
+    if (sb.dataset.shop === 'toggle' && x) {
+      x.done = !x.done; renderShop();
+      api('toggleShop', id, x.done).then(function(d){ S.h.shop = d; if (S.view === 'shop') renderShop(); })
+        .catch(function(e){ x.done = !x.done; if (S.view === 'shop') renderShop(); toast(errMsg(e)); });
+    }
     else if (sb.dataset.shop === 'delete') runShop('deleteShop', [id]);
     return;
   }
@@ -1316,7 +1375,7 @@ document.addEventListener('click', function(ev){
     var what = rf.dataset.refresh;
     if (what === 'docs') { S.docs = null; openDocs(); return; }
     if (what === 'photos') { S.albums = null; openPhotos(); return; }
-    setBusy(true); loadAll().then(function(){ setBusy(false); toast('最新の状態にしました'); }); return;
+    setBusy(true); loadAll(true).then(function(){ setBusy(false); toast('最新の状態にしました'); }); return;
   }
   var b = ev.target.closest('[data-action]'); if (!b || S.busy || !S.m) return;
   var a = b.dataset.action, id = b.dataset.id;
@@ -1333,7 +1392,14 @@ document.addEventListener('click', function(ev){
   else if (a === 'del-todo') { S.confirmTodo = null; runTodo('deleteTodo', [id], '削除しました'); }
   else if (a === 'edit-est') { S.editWish = id; renderMoney(); }
   else if (a === 'buy') { var w = S.m.wishes.filter(function(x){ return x.id === id; })[0]; if (w) openExp(w); }
-  else if (a === 'toggle-todo') { var x = S.t.items.filter(function(i){ return i.id === id; })[0]; if (x) runTodo('setTodoDone', [id, !x.done], x.done ? '未完了に戻しました' : '「' + x.title + '」完了！'); }
+  else if (a === 'toggle-todo') {
+    var x = S.t.items.filter(function(i){ return i.id === id; })[0];
+    if (x) {
+      x.done = !x.done; x.doneAt = x.done ? S.t.today : ''; renderTodo(); toast(x.done ? '「' + x.title + '」完了！' : '未完了に戻しました');
+      api('setTodoDone', id, x.done).then(function(d){ S.t = d; if (S.view === 'todo') renderTodo(); })
+        .catch(function(e){ x.done = !x.done; if (S.view === 'todo') renderTodo(); toast(errMsg(e)); });
+    }
+  }
 });
 document.addEventListener('keydown', function(ev){ if (ev.key === 'Escape' && S.editWish) { S.editWish = null; renderMoney(); } });
 document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible' && S.m && !S.busy) loadAll(); });
