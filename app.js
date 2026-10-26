@@ -51,7 +51,7 @@ function runTodo(fn, args, okMsg){
 }
 
 /* ---------- 画面の切り替え ---------- */
-var VIEWS = ['home','money','project','fixed','todo','docs','photos','album','secret'];
+var VIEWS = ['home','money','project','fixed','todo','shop','docs','photos','album','secret'];
 function parseHash(){
   var h = decodeURIComponent((location.hash || '').replace('#', ''));
   var parts = h.split('/'), v = parts[0];
@@ -69,6 +69,7 @@ function show(view, param){
   if (view === 'project') { if (S.param) S.project = S.param; renderMoney(); }
   if (view === 'fixed') renderFixed();
   if (view === 'todo') renderTodo();
+  if (view === 'shop') renderShop();
   if (view === 'docs') openDocs();
   if (view === 'photos') openPhotos();
   if (view === 'album') openAlbum(S.param);
@@ -117,7 +118,7 @@ function logout(){
 function loadAll(){
   if (!getSession()) { showLogin(); return Promise.resolve(); }
   return call('getAll').then(function(d){
-    S.me = d.me; S.m = d.money; S.t = d.todos; S.f = d.fixed; S.folders = d.folders; banner(null);
+    S.me = d.me; S.m = d.money; S.t = d.todos; S.f = d.fixed; S.h = d.home; S.folders = d.folders; banner(null);
     if (!S.fxMonth) S.fxMonth = S.f.thisMonth;
     var names = S.m.projects.map(function(p){ return p.name; });
     if (names.indexOf(S.project) < 0) {
@@ -176,13 +177,16 @@ function renderHome(){
 
   var open = openTodos(), today = S.t.today;
   var over = open.filter(function(x){ return x.due && x.due < today; }).length;
-  var top = open.slice(0, 3);
   $('tile-todo').innerHTML =
-    '<div class="t-head"><span class="t-name">やること</span><span class="t-go">開く →</span></div>' +
-    '<div class="t-big num">' + open.length + '<span class="t-sub" style="font-size:14px;margin-left:6px">件 残っています' + (over ? '（期限切れ ' + over + '件）' : '') + '</span></div>' +
-    (top.length ? '<div class="mini-todo">' + top.map(function(x){
-      return '<div><span class="chip ' + ownerCls(x.owner) + '">' + esc(x.owner || '未定') + '</span><span class="tt">' + esc(x.title) + '</span>' + (x.due ? '<span class="t-sub' + (x.due < today ? ' due-over' : '') + '">' + md(x.due) + '</span>' : '') + '</div>';
-    }).join('') + '</div>' : '<div class="t-sub">全部終わりました</div>');
+    '<div class="t-head"><span class="t-name">やること</span><span class="t-go">→</span></div>' +
+    '<div class="t-big num">' + open.length + '<span class="t-sub" style="font-size:12px;margin-left:4px">件' + (over ? '・期限切れ' + over : '') + '</span></div>' +
+    (open.length ? '<div class="mini-list">' + open.slice(0, 2).map(function(x){ return '<div>' + esc(x.title) + '</div>'; }).join('') + '</div>' : '<div class="t-sub">全部終わりました</div>');
+  var shopOpen = S.h.shop.filter(function(x){ return !x.done; });
+  $('tile-shop').innerHTML =
+    '<div class="t-head"><span class="t-name">買い物</span><span class="t-go">→</span></div>' +
+    '<div class="t-big num">' + shopOpen.length + '<span class="t-sub" style="font-size:12px;margin-left:4px">品</span></div>' +
+    (shopOpen.length ? '<div class="mini-list">' + shopOpen.slice(0, 2).map(function(x){ return '<div>' + esc(x.name) + '</div>'; }).join('') + '</div>' : '<div class="t-sub">買うものはありません</div>');
+  renderNotices();
 }
 
 function renderClock(){
@@ -598,6 +602,7 @@ document.addEventListener('submit', function(ev){
 var DOC_MAX = 15 * 1024 * 1024;
 function fmtSize(n){ return n >= 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB'; }
 function openDocs(){
+  renderWarranties();
   if (S.docs) { renderDocs(); return; }
   $('docs-list').innerHTML = '<div class="list"><div class="empty">読み込み中…</div></div>';
   api('getDocs').then(function(d){ S.docs = d; if (S.view === 'docs') renderDocs(); })
@@ -611,11 +616,14 @@ function renderDocs(){
       (c.files.length ? c.files.map(function(f){
         var conf = S.confirmFile === f.id;
         return '<div class="row clickable" data-open-file="' + esc(f.id) + '" data-name="' + esc(f.name) + '"><span class="badge ' + f.kind + '">' + (f.kind === 'pdf' ? 'PDF' : f.kind === 'image' ? '画像' : 'ファイル') + '</span>' +
-          '<div class="main"><div class="title">' + esc(f.name) + '</div><div class="sub"><span>' + esc(f.updated) + '</span><span>' + fmtSize(f.size) + '</span></div></div>' +
+          '<div class="main"><div class="title">' + esc(f.name) + '</div><div class="sub"><span>' + esc(f.updated) + '</span><span>' + fmtSize(f.size) + '</span>' +
+          (function(){ var w = warrantyFor(f.id); return w ? '<span>保証 ' + esc(w.date.replace(/-/g, '/')) + 'まで</span>' : ''; })() +
+          '<button class="link-btn" type="button" data-war-file="' + esc(f.id) + '" data-name="' + esc(f.name) + '">' + (warrantyFor(f.id) ? '保証期限を変える' : '保証期限を登録') + '</button></div></div>' +
           (conf ? '<button class="small-btn danger" type="button" data-doc="trash" data-id="' + esc(f.id) + '">削除</button><button class="small-btn" type="button" data-doc="cancel">戻す</button>'
                 : '<button class="icon-btn" type="button" aria-label="' + esc(f.name) + 'を削除" data-doc="ask-trash" data-id="' + esc(f.id) + '">×</button>') + '</div>';
       }).join('') : '<div class="empty">まだありません</div>') + '</div></div>';
   }).join('') || '<div class="list"><div class="empty">分類がありません。「＋ 分類を作る」から作れます。</div></div>';
+  renderWarranties();
 }
 function readDataUrl(file){
   return new Promise(function(res, rej){
@@ -1044,6 +1052,170 @@ document.addEventListener('click', function(ev){
   else if (act === 'close-viewer') closeViewer();
 });
 document.addEventListener('keydown', function(ev){ if (ev.key === 'Escape') closeViewer(); });
+
+/* ---------- 日付の計算 ---------- */
+var DAY = 86400000, DOW_JA = '日月火水木金土';
+function ymdToDate(s){ var p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+function todayDate(){ var d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function daysBetween(a, b){ return Math.round((b - a) / DAY); }
+function mdLabel(d){ return (d.getMonth() + 1) + '/' + d.getDate() + '（' + DOW_JA.charAt(d.getDay()) + '）'; }
+
+/* ---------- 記念日 ---------- */
+function anniversaryInfo(){
+  if (!S.h || !S.h.anniversary) return null;
+  var start = ymdToDate(S.h.anniversary), today = todayDate();
+  var days = daysBetween(start, today);
+  var next = new Date(today.getFullYear(), start.getMonth(), start.getDate());
+  if (next < today) next = new Date(today.getFullYear() + 1, start.getMonth(), start.getDate());
+  var years = next.getFullYear() - start.getFullYear();
+  var nextHundred = Math.ceil((days + 1) / 100) * 100;
+  return {start:start, days:days, next:next, years:years, untilNext:daysBetween(today, next), nextHundred:nextHundred, untilHundred:nextHundred - days, label:S.h.anniversaryLabel || '記念日'};
+}
+
+/* ---------- ごみの日 ---------- */
+function garbageOn(d){
+  if (!S.h) return [];
+  var dow = d.getDay(), nth = Math.ceil(d.getDate() / 7);
+  return S.h.garbage.filter(function(g){ return g.days.indexOf(dow) >= 0 && (!g.nths.length || g.nths.indexOf(nth) >= 0); });
+}
+function nextGarbage(fromDate){
+  for (var i = 0; i < 14; i++) {
+    var d = new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate() + i);
+    var g = garbageOn(d); if (g.length) return {date:d, kinds:g, offset:i};
+  }
+  return null;
+}
+function weekdayText(g){ return g.days.map(function(i){ return DOW_JA.charAt(i); }).join('・') + '曜' + (g.nths.length ? '（第' + g.nths.join('・第') + '）' : ''); }
+
+/* ---------- ホームのお知らせ ---------- */
+function renderNotices(){
+  if (!S.h) return;
+  var today = todayDate(), out = [];
+  var a = anniversaryInfo();
+  if (a) {
+    $('greet-anniv').hidden = false;
+    $('greet-anniv').textContent = a.label + '（' + a.start.getFullYear() + '.' + (a.start.getMonth() + 1) + '.' + a.start.getDate() + '）から ' + a.days.toLocaleString('ja-JP') + '日';
+    if (a.untilNext === 0) out.push({tag:'anniv', t:'記念日', body:'今日は' + a.years + '周年の' + esc(a.label) + 'です 🎉'});
+    else if (a.untilNext <= 30) out.push({tag:'anniv', t:'記念日', body:a.years + '周年の' + esc(a.label) + 'まで あと' + a.untilNext + '日', sub:mdLabel(a.next)});
+    else if (a.untilHundred <= 7) out.push({tag:'anniv', t:'記念日', body:a.nextHundred.toLocaleString('ja-JP') + '日目まで あと' + a.untilHundred + '日'});
+  }
+  var tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+  var tg = garbageOn(tomorrow);
+  var gomiTable = S.showGomi ? '<div class="gomi-table">' + S.h.garbage.map(function(g){ return '<div>' + esc(g.kind) + '：' + weekdayText(g) + (g.time ? '・' + esc(g.time) : '') + '</div>'; }).join('') + '<div>' + esc(S.h.garbageArea) + '・年末年始は日程が変わります</div></div>' : '';
+  if (tg.length) {
+    out.push({tag:'gomi', t:'ごみ', click:'gomi', body:'明日 ' + mdLabel(tomorrow) + ' は <b>' + tg.map(function(g){ return esc(g.kind); }).join('・') + '</b>',
+      sub:(tg.map(function(g){ return [g.time, g.memo].filter(Boolean).join('・'); }).filter(Boolean).join(' ／ ') || '') + gomiTable});
+  } else if (S.h.garbage.length) {
+    var ng = nextGarbage(new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate() + 1));
+    if (ng) out.push({tag:'gomi', t:'ごみ', click:'gomi', body:'明日はごみの日ではありません', sub:'次は ' + mdLabel(ng.date) + ' の' + ng.kinds.map(function(g){ return esc(g.kind); }).join('・') + gomiTable});
+  }
+  S.h.warranties.forEach(function(w){
+    if (!w.date) return;
+    var left = daysBetween(today, ymdToDate(w.date));
+    if (left >= 0 && left <= 60) out.push({tag:'war', t:'保証', go:'docs', body:'「' + esc(w.name) + '」の保証が ' + mdLabel(ymdToDate(w.date)) + ' に切れます', sub:'あと' + left + '日' + (w.memo ? '・' + esc(w.memo) : '')});
+    else if (left < 0 && left >= -30) out.push({tag:'war', t:'保証', go:'docs', body:'「' + esc(w.name) + '」の保証が切れました', sub:mdLabel(ymdToDate(w.date)) + 'まで'});
+  });
+  $('notices').innerHTML = out.map(function(n){
+    var attr = n.click ? ' data-notice="' + n.click + '"' : (n.go ? ' data-go="' + n.go + '"' : '');
+    return '<button class="notice" type="button"' + attr + '><span class="n-tag ' + n.tag + '">' + n.t + '</span><span class="n-body">' + n.body + (n.sub ? '<div class="n-sub">' + n.sub + '</div>' : '') + '</span></button>';
+  }).join('');
+}
+
+/* ---------- 買い物リスト ---------- */
+function runShop(fn, args, okMsg){
+  setBusy(true);
+  return api.apply(null, [fn].concat(args)).then(function(d){ S.h.shop = d; setBusy(false); renderShop(); if (okMsg) toast(okMsg); })
+    .catch(function(e){ setBusy(false); toast(errMsg(e)); });
+}
+function renderShop(){
+  if (!S.h) return;
+  var open = S.h.shop.filter(function(x){ return !x.done; }), done = S.h.shop.filter(function(x){ return x.done; });
+  var row = function(x){
+    return '<div class="row' + (x.done ? ' done' : '') + '"><button class="check' + (x.done ? ' on' : '') + '" type="button" data-shop="toggle" data-id="' + esc(x.id) + '" aria-label="' + esc(x.name) + (x.done ? 'を戻す' : 'をカゴに入れた') + '">' + (x.done ? '✓' : '') + '</button>' +
+      '<div class="main"><div class="title">' + esc(x.name) + '</div><div class="sub">' + (x.memo ? '<span>' + esc(x.memo) + '</span>' : '') + (x.by ? '<span>' + esc(x.by) + 'が追加</span>' : '') + '</div></div>' +
+      '<button class="icon-btn" type="button" data-shop="delete" data-id="' + esc(x.id) + '" aria-label="' + esc(x.name) + 'を消す">×</button></div>';
+  };
+  $('shop-list').innerHTML = open.length ? open.map(row).join('') : '<div class="empty">買うものはありません。上の入力欄から追加できます。</div>';
+  $('shop-done-title').textContent = done.length ? 'カゴに入れたもの（' + done.length + '）' : '';
+  $('shop-clear').hidden = !done.length;
+  $('shop-done').hidden = !done.length;
+  $('shop-done').innerHTML = done.map(row).join('');
+}
+$('shop-form').addEventListener('submit', function(ev){
+  ev.preventDefault();
+  var n = $('sh-name').value.trim();
+  if (!n) { $('sh-err').textContent = '買うものを入れてください。'; return; }
+  var memo = $('sh-memo').value.trim();
+  $('sh-name').value = ''; $('sh-memo').value = ''; $('sh-err').textContent = '';
+  runShop('addShop', [n, memo]).then(function(){ var i = $('sh-name'); if (i) i.focus(); });
+});
+
+/* ---------- 保証期限 ---------- */
+function renderWarranties(){
+  if (!S.h) return;
+  var today = todayDate();
+  var list = S.h.warranties.slice().sort(function(a, b){ return (a.date || '9').localeCompare(b.date || '9'); });
+  $('war-list').innerHTML = !list.length ? '<div class="empty">家電の保証書を入れたら、保証期限も登録しておくと、切れる60日前からホームでお知らせします。</div>' :
+    list.map(function(w){
+      var left = w.date ? daysBetween(today, ymdToDate(w.date)) : null, c = S.confirmWar === w.id;
+      var state = left == null ? '' : (left < 0 ? '<span class="due-over">切れています</span>' : (left <= 60 ? '<span class="due-over">あと' + left + '日</span>' : '<span>あと' + left + '日</span>'));
+      return '<div class="row"><div class="main"><div class="title">' + esc(w.name) + '</div><div class="sub"><span>' + (w.date ? w.date.replace(/-/g, '/') + 'まで' : '') + '</span>' + state + (w.memo ? '<span>' + esc(w.memo) + '</span>' : '') + '</div></div>' +
+        '<button class="link-btn" type="button" data-war="edit" data-id="' + esc(w.id) + '">編集</button>' +
+        (c ? '<button class="small-btn danger" type="button" data-war="delete" data-id="' + esc(w.id) + '">削除</button><button class="small-btn" type="button" data-war="cancel">戻す</button>'
+           : '<button class="icon-btn" type="button" data-war="ask-del" data-id="' + esc(w.id) + '" aria-label="' + esc(w.name) + 'の保証期限を削除">×</button>') + '</div>';
+    }).join('');
+}
+function openWarForm(w, file){
+  S.warEdit = w ? w.id : null; S.warFile = w ? w.fileId : (file ? file.id : '');
+  $('war-form').hidden = false; $('war-err').textContent = '';
+  $('war-title').textContent = w ? '「' + w.name + '」の保証期限' : (file ? '「' + file.name + '」の保証期限を登録' : '保証期限を登録');
+  $('war-name').value = w ? w.name : (file ? file.name.replace(/\.[^.]+$/, '') : '');
+  $('war-date').value = w ? w.date : '';
+  $('war-memo').value = w ? w.memo : '';
+  $('war-form').scrollIntoView({behavior:'smooth', block:'center'});
+  setTimeout(function(){ $('war-date').focus(); }, 250);
+}
+$('war-form').addEventListener('submit', function(ev){
+  ev.preventDefault();
+  var w = {id:S.warEdit || '', fileId:S.warFile || '', name:$('war-name').value.trim(), date:$('war-date').value, memo:$('war-memo').value.trim()};
+  if (!w.name) { $('war-err').textContent = '品名を入れてください。'; return; }
+  if (!w.date) { $('war-err').textContent = '保証期限の日付を入れてください。'; return; }
+  $('war-form').hidden = true; setBusy(true);
+  api('setWarranty', w).then(function(d){ S.h.warranties = d; setBusy(false); renderWarranties(); if (S.docs) renderDocs(); toast('保証期限を保存しました'); })
+    .catch(function(e){ setBusy(false); $('war-form').hidden = false; $('war-err').textContent = errMsg(e); });
+});
+function warrantyFor(fileId){ return S.h ? S.h.warranties.filter(function(w){ return w.fileId === fileId; })[0] : null; }
+
+document.addEventListener('click', function(ev){
+  var nt = ev.target.closest('[data-notice="gomi"]'); if (nt) { S.showGomi = !S.showGomi; renderNotices(); return; }
+  if (S.busy) return;
+  var sb = ev.target.closest('[data-shop]');
+  if (sb) {
+    var id = sb.dataset.id, x = S.h.shop.filter(function(i){ return i.id === id; })[0];
+    if (sb.dataset.shop === 'toggle' && x) runShop('toggleShop', [id, !x.done]);
+    else if (sb.dataset.shop === 'delete') runShop('deleteShop', [id]);
+    return;
+  }
+  var wb = ev.target.closest('[data-war]');
+  if (wb) {
+    var wid = wb.dataset.id, w = S.h.warranties.filter(function(i){ return i.id === wid; })[0];
+    if (wb.dataset.war === 'edit' && w) openWarForm(w);
+    else if (wb.dataset.war === 'ask-del') { S.confirmWar = wid; renderWarranties(); }
+    else if (wb.dataset.war === 'cancel') { S.confirmWar = null; renderWarranties(); }
+    else if (wb.dataset.war === 'delete') {
+      S.confirmWar = null; setBusy(true);
+      api('deleteWarranty', wid).then(function(d){ S.h.warranties = d; setBusy(false); renderWarranties(); if (S.docs) renderDocs(); toast('削除しました'); })
+        .catch(function(e){ setBusy(false); toast(errMsg(e)); });
+    }
+    return;
+  }
+  var wf = ev.target.closest('[data-war-file]');
+  if (wf) { ev.stopPropagation(); openWarForm(warrantyFor(wf.dataset.warFile), {id:wf.dataset.warFile, name:wf.dataset.name}); return; }
+  var b = ev.target.closest('[data-action]'); if (!b) return;
+  if (b.dataset.action === 'clear-shop') runShop('clearShopDone', [], 'カゴに入れたものを消しました');
+  else if (b.dataset.action === 'open-war') openWarForm(null, null);
+  else if (b.dataset.action === 'close-war') $('war-form').hidden = true;
+}, true);
 
 /* ---------- 共通のクリック処理 ---------- */
 document.addEventListener('submit', function(ev){

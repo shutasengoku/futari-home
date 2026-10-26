@@ -47,13 +47,16 @@
             <div class="g-date num" id="greet-date"></div>
             <div class="g-time num" id="greet-time"></div>
           </div>
+          <div class="g-anniv num" id="greet-anniv" hidden></div>
         </div>
       </div>
       <input type="file" id="photo-input" accept="image/*" hidden>
     </div>
+    <div class="notices" id="notices"></div>
     <div class="tiles">
       <button class="tile wide c-money" type="button" data-go="money" id="tile-money"></button>
-      <button class="tile wide c-todo" type="button" data-go="todo" id="tile-todo"></button>
+      <button class="tile half c-todo" type="button" data-go="todo" id="tile-todo"></button>
+      <button class="tile half c-shop" type="button" data-go="shop" id="tile-shop"></button>
       <button class="tile small c-docs" type="button" data-go="docs"><span class="t-name">書類</span><span class="t-sub">契約書・保証書など</span></button>
       <button class="tile small c-photos" type="button" data-go="photos"><span class="t-name">写真</span><span class="t-sub">思い出のアルバム</span></button>
       <button class="tile small c-secret" type="button" data-go="secret"><span class="t-name">機密</span><span class="t-sub">パスワードなど</span><span class="t-go" id="tile-secret-state">🔒 ロック中</span></button>
@@ -260,6 +263,30 @@
     <div class="sheet-link" id="fixed-sheet-link"></div>
   </div>
 
+  <!-- 買い物リスト -->
+  <div class="view" id="v-shop" hidden>
+    <div class="bar-top">
+      <div>
+        <button class="back" type="button" data-go="home">← ホーム</button>
+        <h1>買い物リスト</h1>
+      </div>
+      <button class="refresh" type="button" data-refresh="shop">更新</button>
+    </div>
+    <form class="add-todo" id="shop-form" novalidate>
+      <div class="add-row">
+        <input id="sh-name" maxlength="60" placeholder="買うものを入力" aria-label="買うもの">
+        <button class="btn" type="submit">追加</button>
+      </div>
+      <input id="sh-memo" maxlength="60" placeholder="数量・メモ（任意）例：2本、特売なら" aria-label="数量・メモ">
+      <div class="err" id="sh-err"></div>
+    </form>
+    <div class="list" id="shop-list"></div>
+    <div>
+      <div class="sec-head"><span class="group-name" id="shop-done-title"></span><button class="small-btn" type="button" data-action="clear-shop" id="shop-clear">チェックしたものを消す</button></div>
+      <div class="list" id="shop-done" style="margin-top:6px"></div>
+    </div>
+  </div>
+
   <!-- 書類 -->
   <div class="view" id="v-docs" hidden>
     <div class="bar-top">
@@ -287,6 +314,18 @@
       <div class="err" id="docfolder-err"></div>
       <div class="actions"><button type="button" class="btn ghost" data-action="close-docfolder">やめる</button><button type="submit" class="btn">作る</button></div>
     </form>
+    <section>
+      <div class="sec-head"><h2>保証期限</h2><button class="btn ghost" type="button" data-action="open-war">＋ 追加</button></div>
+      <form class="form" id="war-form" hidden novalidate>
+        <div class="ftitle" id="war-title">保証期限を登録</div>
+        <div class="field"><label for="war-name">品名</label><input id="war-name" maxlength="60" placeholder="例：冷蔵庫"></div>
+        <div class="field"><label for="war-date">保証期限</label><input id="war-date" type="date"></div>
+        <div class="field"><label for="war-memo">メモ（任意）</label><input id="war-memo" maxlength="100" placeholder="例：延長保証あり・〇〇電機"></div>
+        <div class="err" id="war-err"></div>
+        <div class="actions"><button type="button" class="btn ghost" data-action="close-war">やめる</button><button type="submit" class="btn">保存する</button></div>
+      </form>
+      <div class="list" id="war-list"></div>
+    </section>
     <div id="docs-list" style="display:flex;flex-direction:column;gap:16px"></div>
   </div>
 

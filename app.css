@@ -5,7 +5,7 @@
   --money-bg:#FBEFCF; --money-ink:#6B4800; --todo-bg:#DCEFE2; --todo-ink:#1F5A3B;
   --docs-bg:#DFE8F7; --docs-ink:#1F4886; --photos-bg:#F8E0E8; --photos-ink:#86304C;
   --secret-bg:#E7E3F3; --secret-ink:#463B78; --track:rgba(255,255,255,.7);
-  --fixed-bg:#FBE3D3; --fixed-ink:#8A3B12;
+  --fixed-bg:#FBE3D3; --fixed-ink:#8A3B12; --shop-bg:#DDF0F2; --shop-ink:#1C5A63;
   --f-display:"Zen Maru Gothic","Hiragino Maru Gothic ProN","Hiragino Sans",sans-serif;
   --f-body:"Zen Kaku Gothic New","Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif;
 }
@@ -16,7 +16,7 @@
   --money-bg:#3A2F14; --money-ink:#F1CF78; --todo-bg:#1B3427; --todo-ink:#93D6B0;
   --docs-bg:#1D2B43; --docs-ink:#A3C1F2; --photos-bg:#3B1F28; --photos-ink:#F3A9C0;
   --secret-bg:#26223A; --secret-ink:#BDB4F0; --track:rgba(0,0,0,.28);
-  --fixed-bg:#3B2418; --fixed-ink:#F4B48C; color-scheme:dark}}
+  --fixed-bg:#3B2418; --fixed-ink:#F4B48C; --shop-bg:#17343A; --shop-ink:#8FD0D9; color-scheme:dark}}
 *{box-sizing:border-box}
 html,body{margin:0}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6;
@@ -75,6 +75,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{ou
 .tile.c-docs{background:var(--docs-bg);color:var(--docs-ink)}
 .tile.c-photos{background:var(--photos-bg);color:var(--photos-ink)}
 .tile.c-fixed{background:var(--fixed-bg);color:var(--fixed-ink)}
+.tile.c-shop{background:var(--shop-bg);color:var(--shop-ink)}
 .tile.c-secret{background:var(--secret-bg);color:var(--secret-ink)}
 .tile .t-sub,.tile .t-go{color:inherit;opacity:.8}
 .tile .bar{background:var(--track)}
@@ -272,3 +273,19 @@ input,select.in{font:inherit;color:var(--ink);background:var(--bg);border:1px so
 .tile .t-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:13px}
 .tile .t-row b{font-family:var(--f-display);font-size:18px;white-space:nowrap}
 .tile .t-row span.l{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* home notices & anniversary */
+.g-anniv{font-size:13px;opacity:.9;margin-top:2px}
+.notices{display:flex;flex-direction:column;gap:8px}
+.notice{display:flex;gap:10px;align-items:flex-start;background:var(--surface);border-radius:12px;padding:10px 14px;font-size:14px;text-align:left;width:100%}
+.notice .n-tag{flex:none;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;margin-top:1px}
+.notice .n-body{min-width:0;flex:1}
+.notice .n-sub{font-size:12px;color:var(--muted)}
+.n-tag.gomi{background:var(--todo-bg);color:var(--todo-ink)}
+.n-tag.war{background:var(--docs-bg);color:var(--docs-ink)}
+.n-tag.anniv{background:var(--photos-bg);color:var(--photos-ink)}
+.n-tag.todo{background:var(--fixed-bg);color:var(--fixed-ink)}
+.gomi-table{display:flex;flex-direction:column;gap:2px;margin-top:6px;font-size:12px;color:var(--muted)}
+.mini-list{display:flex;flex-direction:column;gap:3px;font-size:13px}
+.mini-list div{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile.half .t-big{font-size:22px}

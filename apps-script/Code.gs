@@ -13,7 +13,7 @@
 const CLIENT_ID = '264124983411-o94hvp7221a45f6c59trdv628nt97flo.apps.googleusercontent.com';
 
 const MONEY_ID = '1lsNoI837NrxVJTpXI92RdQQLnfjNYcbPqSqEUOAWd6M';   // お金/ふたりのお金 台帳
-const TODO_ID  = '1551Q4cmKDR548uY1oc_eaK-gOAd8cml3658_1ez3uU0';   // やること/ふたりのやること
+const TODO_ID  = '1551Q4cmKDR548uY1oc_eaK-gOAd8cml3658_1ez3uU0';   // 暮らし/ふたりの暮らし（やること・買い物・保証・ホーム設定）
 const FIXED_ID = '105jNfd5tCU2Sj_EIoxdajUWtUfKB5PBQZ4FQHfJZSig';   // お金/ふたりの固定費
 const VAULT_NAME = 'ふたりの機密（暗号化済み）.json';                // 機密フォルダに作られる。中身は暗号化された文字だけ
 const FOLDERS = {
@@ -72,6 +72,13 @@ const ACTIONS = {
   setTodoDone:     (me, a) => setTodoDone_(a[0], a[1]),
   deleteTodo:      (me, a) => deleteTodo_(a[0]),
   logout:          (me)    => logout_(me),
+  // 暮らし：買い物・保証
+  addShop:         (me, a) => addShop_(me, a[0], a[1]),
+  toggleShop:      (me, a) => toggleShop_(a[0], a[1]),
+  deleteShop:      (me, a) => deleteShop_(a[0]),
+  clearShopDone:   (me)    => clearShopDone_(),
+  setWarranty:     (me, a) => setWarranty_(a[0]),
+  deleteWarranty:  (me, a) => deleteWarranty_(a[0]),
   // お金：プロジェクト
   addProject:      (me, a) => addProject_(me, a[0]),
   setProjectStatus:(me, a) => setProjectStatus_(me, a[0], a[1]),
@@ -168,7 +175,7 @@ function getAll_(me) {
   Object.keys(FOLDERS).forEach(k => folders[k] = 'https://drive.google.com/drive/folders/' + FOLDERS[k]);
   return {
     me: { email: me.email, member: me.member, members: me.members },
-    money: moneyData_(me), todos: todoData_(), fixed: fixedData_(me), folders: folders
+    money: moneyData_(me), todos: todoData_(), fixed: fixedData_(me), home: homeData_(), folders: folders
   };
 }
 
@@ -348,6 +355,90 @@ function deleteTodo_(id) {
     const row = findRow_(sh, 7, id);
     if (row > 0) sh.deleteRow(row);
   });
+}
+
+/* =========================================================
+ * 暮らし：ホーム設定（記念日・ごみの日）・買い物・保証期限
+ * ======================================================= */
+
+function kurashi_() { return SpreadsheetApp.openById(TODO_ID); }
+
+function homeData_() {
+  const ss = kurashi_();
+  const sh = ss.getSheetByName('ホーム設定');
+  const v = sh.getRange(1, 1, Math.max(sh.getLastRow(), 2), 8).getValues();
+  const kv = {};
+  v.slice(1).forEach(r => { if (String(r[0]).trim()) kv[String(r[0]).trim()] = r[1]; });
+  const DOW = '日月火水木金土';
+  const garbage = v.slice(1).filter(r => String(r[3]).trim()).map(r => ({
+    kind: String(r[3]).trim(),
+    days: String(r[4]).split(/[,、・\s]+/).map(x => x.replace('曜日', '').replace('曜', '').trim()).filter(x => x.length === 1).map(x => DOW.indexOf(x)).filter(i => i >= 0),
+    nths: /毎週/.test(String(r[5])) || !String(r[5]).trim() ? [] : (String(r[5]).match(/\d/g) || []).map(Number),
+    time: String(r[6] || ''), memo: String(r[7] || '')
+  }));
+  return {
+    anniversary: fmtDate_(kv['記念日']), anniversaryLabel: String(kv['記念日の呼び方'] || '記念日'),
+    garbageArea: String(kv['ごみの地域'] || ''), garbage: garbage,
+    shop: shopData_(ss), warranties: warrantyData_(ss),
+    today: Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd'), sheetUrl: ss.getUrl()
+  };
+}
+
+function shopData_(ss) {
+  return readRows_((ss || kurashi_()).getSheetByName('買い物'), 6, 5, r => r[0] !== '').map(r => ({
+    id: String(r[5]), name: String(r[0]), memo: String(r[1] || ''), done: String(r[2]) === '済', by: String(r[3] || ''), added: fmtDate_(r[4])
+  }));
+}
+
+function warrantyData_(ss) {
+  return readRows_((ss || kurashi_()).getSheetByName('保証'), 5, 4, r => r[0] !== '' || r[1] !== '').map(r => ({
+    id: String(r[4]), name: String(r[0]), date: fmtDate_(r[1]), fileId: String(r[2] || ''), memo: String(r[3] || '')
+  }));
+}
+
+function shopWrite_(fn) { const ss = kurashi_(); lock_(() => fn(ss.getSheetByName('買い物'))); return shopData_(ss); }
+
+function addShop_(me, name, memo) {
+  const n = clean_(name, 60);
+  if (!n) throw err_('品名を入れてください。');
+  return shopWrite_(sh => sh.appendRow([n, clean_(memo, 60), '未', me.member || '', Utilities.formatDate(new Date(), TZ, 'yyyy/MM/dd'), newId_()]));
+}
+function toggleShop_(id, done) {
+  return shopWrite_(sh => { const row = findRow_(sh, 5, id); if (row > 0) sh.getRange(row, 3).setValue(done ? '済' : '未'); });
+}
+function deleteShop_(id) {
+  return shopWrite_(sh => { const row = findRow_(sh, 5, id); if (row > 0) sh.deleteRow(row); });
+}
+function clearShopDone_() {
+  return shopWrite_(sh => {
+    const last = sh.getLastRow();
+    if (last < 2) return;
+    const v = sh.getRange(2, 3, last - 1, 1).getValues();
+    for (let i = v.length - 1; i >= 0; i--) if (String(v[i][0]) === '済') sh.deleteRow(i + 2);
+  });
+}
+
+/** 保証期限を登録・更新（id があれば更新、fileId が同じものがあればそれを更新） */
+function setWarranty_(w) {
+  const name = clean_(w && w.name, 60);
+  const date = fmtDate_(w && w.date);
+  if (!name) throw err_('品名を入れてください。');
+  if (!date) throw err_('保証期限の日付を入れてください。');
+  const ss = kurashi_();
+  lock_(() => {
+    const sh = ss.getSheetByName('保証');
+    let row = w.id ? findRow_(sh, 4, w.id) : -1;
+    if (row < 0 && w.fileId) row = findRow_(sh, 2, w.fileId);
+    const vals = [name, date.replace(/-/g, '/'), clean_(w.fileId, 80), clean_(w.memo, 100)];
+    if (row > 0) sh.getRange(row, 1, 1, 4).setValues([vals]);
+    else sh.appendRow(vals.concat([newId_()]));
+  });
+  return warrantyData_(ss);
+}
+function deleteWarranty_(id) {
+  const ss = kurashi_();
+  lock_(() => { const sh = ss.getSheetByName('保証'); const row = findRow_(sh, 4, id); if (row > 0) sh.deleteRow(row); });
+  return warrantyData_(ss);
 }
 
 /* =========================================================
