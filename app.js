@@ -50,7 +50,7 @@ function saveCache(){
 }
 function readCache(){ try { return JSON.parse(lsGet(CACHE_KEY) || 'null'); } catch(e) { return null; } }
 function clearLocal(){
-  lsDel(CACHE_KEY); lsDel(PH_LAST);
+  lsDel(CACHE_KEY); lsDel(PH_LAST); lsDel('futari-cal-up'); S.up = null; S.calCache = {};
   var idx = []; try { idx = JSON.parse(lsGet(PH_INDEX) || '[]'); } catch(e) {}
   idx.forEach(function(id){ lsDel(PH_PREFIX + id); }); lsDel(PH_INDEX);
 }
@@ -67,7 +67,7 @@ function runTodo(fn, args, okMsg){
 }
 
 /* ---------- 画面の切り替え ---------- */
-var VIEWS = ['home','money','project','fixed','todo','shop','docs','photos','album','secret'];
+var VIEWS = ['home','money','project','fixed','todo','shop','cal','docs','photos','album','secret'];
 function parseHash(){
   var h = decodeURIComponent((location.hash || '').replace('#', ''));
   var parts = h.split('/'), v = parts[0];
@@ -86,6 +86,7 @@ function show(view, param){
   if (view === 'fixed') renderFixed();
   if (view === 'todo') renderTodo();
   if (view === 'shop') renderShop();
+  if (view === 'cal') openCal();
   if (view === 'docs') openDocs();
   if (view === 'photos') openPhotos();
   if (view === 'album') openAlbum(S.param);
@@ -157,11 +158,13 @@ function rerender(){
   else if (v === 'fixed') renderFixed();
   else if (v === 'todo') renderTodo();
   else if (v === 'shop') renderShop();
+  else if (v === 'cal') renderCal();
 }
 function loadAll(fresh){
   if (!getSession()) { showLogin(); return Promise.resolve(); }
   if (!S.m) { var c = readCache(); if (c && c.money && c.me) applyData(c); }
   if (!S.photoAsked) { S.photoAsked = true; startPhoto(); }
+  loadUpcoming();
   return call('getAll', fresh ? {fresh:true} : {}).then(applyData).catch(function(e){
     if (e && (e.code === 'auth' || e.code === 'forbidden')) return;
     if (S.m) toast('最新の内容を読み込めませんでした。' + errMsg(e));
@@ -222,6 +225,7 @@ function renderHome(){
     '<div class="t-big num">' + shopOpen.length + '<span class="t-sub" style="font-size:12px;margin-left:4px">品</span></div>' +
     (shopOpen.length ? '<div class="mini-list">' + shopOpen.slice(0, 2).map(function(x){ return '<div>' + esc(x.name) + '</div>'; }).join('') + '</div>' : '<div class="t-sub">買うものはありません</div>');
   renderNotices();
+  renderCalTile();
 }
 
 function renderClock(){
@@ -1354,6 +1358,174 @@ document.addEventListener('click', function(ev){
   else if (b.dataset.action === 'close-war') $('war-form').hidden = true;
 }, true);
 
+/* ---------- カレンダー ---------- */
+var CAL_UP_KEY = 'futari-cal-up';
+S.calCache = {};
+function ymd(d){ return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+function addDays(d, n){ return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n); }
+function calRangeFor(ym){
+  var p = ym.split('-'), first = new Date(+p[0], +p[1] - 1, 1), start = addDays(first, -first.getDay());
+  return {from:ymd(start), to:ymd(addDays(start, 41)), start:start};
+}
+function eventsOn(day, events){
+  return (events || []).filter(function(e){ return e.date <= day && day <= e.endDate; }).sort(function(a, b){
+    if (a.allDay !== b.allDay) return a.allDay ? -1 : 1;
+    return (a.start || '').localeCompare(b.start || '');
+  });
+}
+function loadUpcoming(){
+  if (!S.up) { try { S.up = JSON.parse(lsGet(CAL_UP_KEY) || 'null'); } catch(e) {} }
+  var t = todayDate();
+  return api('getEvents', ymd(t), ymd(addDays(t, 13))).then(function(d){
+    S.up = d; S.upErr = false; lsSet(CAL_UP_KEY, JSON.stringify(d)); if (S.view === 'home') renderCalTile();
+  }).catch(function(){ S.upErr = true; if (S.view === 'home') renderCalTile(); });
+}
+function dayWord(k){
+  var t = todayDate();
+  if (k === ymd(t)) return '今日';
+  if (k === ymd(addDays(t, 1))) return '明日';
+  return mdLabel(ymdToDate(k));
+}
+function renderCalTile(){
+  var el = $('tile-cal'); if (!el) return;
+  var head = '<div class="t-head"><span class="t-name">カレンダー</span><span class="t-go">開く →</span></div>';
+  if (!S.up) { el.innerHTML = head + '<div class="t-sub">' + (S.upErr ? 'まだ予定を読み込めていません' : '読み込み中…') + '</div>'; return; }
+  var today = ymd(todayDate());
+  var hol = S.up.holidays.filter(function(h){ return h.date === today; })[0];
+  var list = S.up.events.filter(function(e){ return e.endDate >= today; }).map(function(e){
+    var k = e.date < today ? today : e.date;
+    return {e:e, k:k, sort:k + (e.allDay ? ' ' : e.date < today ? ' ' : e.start)};
+  }).sort(function(a, b){ return a.sort.localeCompare(b.sort); }).slice(0, 4);
+  el.innerHTML = head + (hol ? '<div class="t-sub">今日は' + esc(hol.name) + '</div>' : '') +
+    (list.length ? '<div class="cal-rows">' + list.map(function(x){
+      var e = x.e, time = e.allDay ? '' : (e.date < today ? '' : ' ' + e.start);
+      return '<div class="cal-row"><span class="when">' + dayWord(x.k) + time + '</span><span class="pdot ' + ownerCls(e.who) + '"></span><span class="tt">' + esc(e.title) + '</span></div>';
+    }).join('') + '</div>' : '<div class="t-sub">これから2週間の予定はありません</div>');
+}
+function openCal(){
+  if (!S.calMonth) { var t = todayDate(); S.calMonth = ymd(t).slice(0, 7); S.calSel = ymd(t); }
+  renderCal(); fetchCal();
+}
+function calKey(){ var r = calRangeFor(S.calMonth); return r.from + '_' + r.to; }
+function fetchCal(){
+  var r = calRangeFor(S.calMonth), key = r.from + '_' + r.to;
+  return api('getEvents', r.from, r.to).then(function(d){ S.calCache[key] = d; if (S.view === 'cal' && calKey() === key) renderCal(); })
+    .catch(function(e){ if (S.view === 'cal' && !S.calCache[key]) $('cal-day-list').innerHTML = '<div class="empty">' + esc(errMsg(e)) + '</div>'; });
+}
+function setEvWho(w){ S.evWho = w; Array.prototype.forEach.call($('ev-who').querySelectorAll('button'), function(b){ b.setAttribute('aria-pressed', String(b.dataset.evwho === w)); }); }
+function renderCal(){
+  if (!S.me || !S.calMonth) return;
+  var r = calRangeFor(S.calMonth), d = S.calCache[r.from + '_' + r.to], p = S.calMonth.split('-'), month = +p[1] - 1;
+  $('cal-month').textContent = p[0] + '年' + (+p[1]) + '月';
+  var today = ymd(todayDate()), hol = {};
+  if (d) d.holidays.forEach(function(h){ hol[h.date] = h.name; });
+  var anniv = S.h && S.h.anniversary ? +S.h.anniversary.split('-')[2] : 0;
+  var html = '日月火水木金土'.split('').map(function(w, i){ return '<div class="cal-dow' + (i === 0 ? ' sun' : i === 6 ? ' sat' : '') + '">' + w + '</div>'; }).join('');
+  for (var i = 0; i < 42; i++) {
+    var day = addDays(r.start, i), k = ymd(day), evs = d ? eventsOn(k, d.events) : [], other = day.getMonth() !== month;
+    var cls = 'cal-day' + (other ? ' other' : '') + (k === today ? ' today' : '') + (k === S.calSel ? ' sel' : '') + (day.getDay() === 0 || hol[k] ? ' sun' : day.getDay() === 6 ? ' sat' : '');
+    html += '<button type="button" class="' + cls + '" data-calday="' + k + '" aria-label="' + (day.getMonth() + 1) + '月' + day.getDate() + '日' + (evs.length ? '、予定' + evs.length + '件' : '') + '">' +
+      '<span class="d">' + day.getDate() + '</span>' + (hol[k] ? '<span class="hol">' + esc(hol[k]) + '</span>' : '') +
+      '<span class="dots">' + evs.slice(0, 4).map(function(e){ return '<span class="pdot ' + ownerCls(e.who) + '"></span>'; }).join('') + '</span>' +
+      (anniv && !other && day.getDate() === anniv ? '<span class="anniv" aria-hidden="true">♡</span>' : '') + '</button>';
+  }
+  $('cal-grid').innerHTML = html;
+  $('cal-legend').innerHTML = S.me.members.concat([OWNERS_BOTH]).map(function(n){ return '<span><span class="pdot ' + ownerCls(n) + '"></span>' + esc(n) + '</span>'; }).join('');
+  if (!$('ev-who').children.length) {
+    $('ev-who').innerHTML = S.me.members.concat([OWNERS_BOTH]).map(function(n){ return '<button type="button" class="' + ownerCls(n) + '" data-evwho="' + esc(n) + '" aria-pressed="false">' + esc(n) + '</button>'; }).join('');
+  }
+  var sel = S.calSel;
+  $('cal-day-title').textContent = dayWord(sel) === '今日' || dayWord(sel) === '明日' ? dayWord(sel) + ' ' + mdLabel(ymdToDate(sel)) : mdLabel(ymdToDate(sel));
+  if (hol[sel]) $('cal-day-title').textContent += '・' + hol[sel];
+  if (!d) { $('cal-day-list').innerHTML = '<div class="empty">読み込み中…</div>'; return; }
+  var list = eventsOn(sel, d.events);
+  $('cal-day-list').innerHTML = !list.length ? '<div class="empty">予定はありません</div>' : list.map(function(e){
+    return '<button class="row ev-row" type="button" data-ev="' + esc(e.id) + '"><div class="ev-time num">' + (e.allDay ? '終日' : esc(e.start) + '<br><span>〜' + esc(e.end) + '</span>') + '</div>' +
+      '<div class="main"><div class="title">' + esc(e.title) + '</div><div class="sub"><span class="chip ' + ownerCls(e.who) + '">' + esc(e.who) + '</span>' +
+      (e.endDate !== e.date ? '<span>' + md(e.date) + '〜' + md(e.endDate) + '</span>' : '') + (e.location ? '<span>' + esc(e.location) + '</span>' : '') + (e.recurring ? '<span>くり返し</span>' : '') + '</div>' +
+      (e.memo ? '<div class="sub">' + esc(e.memo) + '</div>' : '') + '</div></button>';
+  }).join('');
+}
+function syncAllDay(){ var a = $('ev-allday').checked; $('ev-time-field').hidden = a; $('ev-enddate-field').hidden = !a; }
+function plusHour(t){ var p = t.split(':'), h = (+p[0] + 1) % 24; return ('0' + h).slice(-2) + ':' + p[1]; }
+function openEvForm(e){
+  if (e && e.recurring) { toast('くり返しの予定は、Googleカレンダーのアプリで編集してください'); return; }
+  S.evEdit = e ? e.id : null; S.evDelAsk = false;
+  $('ev-form').hidden = false; $('ev-err').textContent = '';
+  $('ev-form-title').textContent = e ? '予定を編集' : '予定を追加';
+  $('ev-title').value = e ? e.title : '';
+  setEvWho(e ? e.who : OWNERS_BOTH);
+  $('ev-allday').checked = e ? e.allDay : false;
+  $('ev-date').value = e ? e.date : S.calSel;
+  $('ev-enddate').value = e && e.allDay && e.endDate !== e.date ? e.endDate : '';
+  $('ev-start').value = e && !e.allDay ? e.start : '19:00';
+  $('ev-end').value = e && !e.allDay ? e.end : '20:00';
+  $('ev-loc').value = e ? e.location : ''; $('ev-memo').value = e ? e.memo : '';
+  $('ev-delete').hidden = !e; $('ev-delete').textContent = 'この予定を削除';
+  syncAllDay();
+  $('ev-form').scrollIntoView({behavior:'smooth', block:'center'});
+  if (!e) setTimeout(function(){ $('ev-title').focus(); }, 250);
+}
+$('ev-allday').addEventListener('change', syncAllDay);
+$('ev-start').addEventListener('change', function(){ if (this.value && (!$('ev-end').value || $('ev-end').value <= this.value)) $('ev-end').value = plusHour(this.value); });
+function calSaved(d, toastMsg, date){
+  var r = calRangeFor(S.calMonth); S.calCache[r.from + '_' + r.to] = d;
+  setBusy(false); $('ev-form').hidden = true;
+  if (date && date.slice(0, 7) !== S.calMonth) { S.calMonth = date.slice(0, 7); S.calSel = date; renderCal(); fetchCal(); }
+  else { if (date) S.calSel = date; renderCal(); }
+  toast(toastMsg); loadUpcoming();
+}
+$('ev-form').addEventListener('submit', function(ev){
+  ev.preventDefault();
+  var x = {title:$('ev-title').value.trim(), who:S.evWho || OWNERS_BOTH, allDay:$('ev-allday').checked, date:$('ev-date').value,
+    endDate:$('ev-enddate').value, start:$('ev-start').value, end:$('ev-end').value, location:$('ev-loc').value.trim(), memo:$('ev-memo').value.trim()};
+  if (!x.title) { $('ev-err').textContent = '予定の名前を入れてください。'; return; }
+  if (!x.date) { $('ev-err').textContent = '日付を入れてください。'; return; }
+  if (x.allDay && x.endDate && x.endDate < x.date) { $('ev-err').textContent = '終わりの日は始まりの日より後にしてください。'; return; }
+  if (!x.allDay && (!x.start || !x.end)) { $('ev-err').textContent = '開始と終了の時間を入れてください。'; return; }
+  var r = calRangeFor(S.calMonth), rng = {from:r.from, to:r.to};
+  setBusy(true);
+  (S.evEdit ? api('updateEvent', S.evEdit, x, rng) : api('addEvent', x, rng))
+    .then(function(d){ calSaved(d, S.evEdit ? '予定を保存しました' : '「' + x.title + '」を追加しました', x.date); })
+    .catch(function(e){ setBusy(false); $('ev-err').textContent = errMsg(e); });
+});
+
+document.addEventListener('click', function(ev){
+  var cm = ev.target.closest('[data-calmonth]');
+  if (cm) {
+    var p = S.calMonth.split('-'), d = new Date(+p[0], +p[1] - 1 + Number(cm.dataset.calmonth), 1);
+    S.calMonth = ymd(d).slice(0, 7);
+    var t = todayDate(); S.calSel = ymd(t).slice(0, 7) === S.calMonth ? ymd(t) : ymd(d);
+    $('ev-form').hidden = true; renderCal(); fetchCal(); return;
+  }
+  var cd = ev.target.closest('[data-calday]');
+  if (cd) {
+    S.calSel = cd.dataset.calday;
+    if (S.calSel.slice(0, 7) !== S.calMonth) { S.calMonth = S.calSel.slice(0, 7); renderCal(); fetchCal(); } else renderCal();
+    if (!$('ev-form').hidden && !S.evEdit) $('ev-date').value = S.calSel;
+    return;
+  }
+  var ew = ev.target.closest('[data-evwho]'); if (ew) { setEvWho(ew.dataset.evwho); return; }
+  if (S.busy) return;
+  var er = ev.target.closest('[data-ev]');
+  if (er) {
+    var data = S.calCache[calKey()];
+    var e = data && data.events.filter(function(x){ return x.id === er.dataset.ev; })[0];
+    if (e) openEvForm(e);
+    return;
+  }
+  var b = ev.target.closest('[data-action]'); if (!b) return;
+  if (b.dataset.action === 'open-ev') openEvForm(null);
+  else if (b.dataset.action === 'close-ev') $('ev-form').hidden = true;
+  else if (b.dataset.action === 'delete-ev' && S.evEdit) {
+    if (!S.evDelAsk) { S.evDelAsk = true; b.textContent = 'もう一度押すと削除'; return; }
+    var r = calRangeFor(S.calMonth);
+    setBusy(true);
+    api('deleteEvent', S.evEdit, {from:r.from, to:r.to}).then(function(d){ calSaved(d, '予定を削除しました'); })
+      .catch(function(e){ setBusy(false); $('ev-err').textContent = errMsg(e); });
+  }
+}, true);
+
 /* ---------- 共通のクリック処理 ---------- */
 document.addEventListener('submit', function(ev){
   var f = ev.target.closest('[data-form="est"]'); if (!f) return;
@@ -1375,6 +1547,7 @@ document.addEventListener('click', function(ev){
     var what = rf.dataset.refresh;
     if (what === 'docs') { S.docs = null; openDocs(); return; }
     if (what === 'photos') { S.albums = null; openPhotos(); return; }
+    if (what === 'cal') { setBusy(true); Promise.all([fetchCal(), loadUpcoming()]).then(function(){ setBusy(false); toast('最新の状態にしました'); }); return; }
     setBusy(true); loadAll(true).then(function(){ setBusy(false); toast('最新の状態にしました'); }); return;
   }
   var b = ev.target.closest('[data-action]'); if (!b || S.busy || !S.m) return;

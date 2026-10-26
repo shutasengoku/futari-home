@@ -15,7 +15,9 @@ const CLIENT_ID = '264124983411-o94hvp7221a45f6c59trdv628nt97flo.apps.googleuser
 const MONEY_ID = '1lsNoI837NrxVJTpXI92RdQQLnfjNYcbPqSqEUOAWd6M';   // お金/ふたりのお金 台帳
 const TODO_ID  = '1551Q4cmKDR548uY1oc_eaK-gOAd8cml3658_1ez3uU0';   // 暮らし/ふたりの暮らし（やること・買い物・保証・ホーム設定）
 const FIXED_ID = '105jNfd5tCU2Sj_EIoxdajUWtUfKB5PBQZ4FQHfJZSig';   // お金/ふたりの共通口座（固定費・お小遣い・残高）
-const VAULT_NAME = 'ふたりの機密（暗号化済み）.json';                // 機密フォルダに作られる。中身は暗号化された文字だけ
+const VAULT_NAME = 'ふたりの機密（暗号化済み）.json';
+const CAL_NAME = 'ふたりのカレンダー';                                // 初めて使うときに自動で作られる
+const HOLIDAY_CAL = 'ja.japanese#holiday@group.v.calendar.google.com';                // 機密フォルダに作られる。中身は暗号化された文字だけ
 const FOLDERS = {
   root:       '1wB1vA_-J3nNG4dHAbefkivivaZoTHi6f',
   money:      '1f6Awrp3VWKHOUDT5DAwiC1LqvUMxOsUe',
@@ -83,6 +85,11 @@ const ACTIONS = {
   clearShopDone:   (me)    => clearShopDone_(),
   setWarranty:     (me, a) => setWarranty_(a[0]),
   deleteWarranty:  (me, a) => deleteWarranty_(a[0]),
+  // カレンダー
+  getEvents:       (me, a) => getEvents_(me, a[0], a[1]),
+  addEvent:        (me, a) => saveEvent_(me, null, a[0], a[1]),
+  updateEvent:     (me, a) => saveEvent_(me, a[0], a[1], a[2]),
+  deleteEvent:     (me, a) => deleteEvent_(me, a[0], a[1]),
   // お金：プロジェクト
   addProject:      (me, a) => addProject_(me, a[0]),
   setProjectStatus:(me, a) => setProjectStatus_(me, a[0], a[1]),
@@ -197,7 +204,7 @@ function getAll_(me, fresh) {
  * ======================================================= */
 
 const CACHE_TTL = 600;
-const READ_ACTIONS = ['getAll', 'getData', 'getTodos', 'getFixed', 'getDocs', 'getAlbums', 'getAlbum',
+const READ_ACTIONS = ['getAll', 'getData', 'getTodos', 'getFixed', 'getDocs', 'getAlbums', 'getAlbum', 'getEvents',
   'getHomePhoto', 'getHomePhotoList', 'getPhoto', 'getFileData', 'getVault'];
 
 function cacheGen_() { return PropertiesService.getScriptProperties().getProperty('cacheGen') || '0'; }
@@ -518,6 +525,123 @@ function deleteWarranty_(id) {
   const ss = kurashi_();
   lock_(() => { const sh = ss.getSheetByName('保証'); const row = findRow_(sh, 4, id); if (row > 0) sh.deleteRow(row); });
   return warrantyData_(ss);
+}
+
+/* =========================================================
+ * カレンダー（しゅうくんのGoogleカレンダーに「ふたりのカレンダー」を作り、ふたりで共有）
+ * ======================================================= */
+
+function calendar_() {
+  const props = PropertiesService.getScriptProperties();
+  const id = props.getProperty('calendarId');
+  let cal = id ? CalendarApp.getCalendarById(id) : null;
+  if (!cal) {
+    const found = CalendarApp.getCalendarsByName(CAL_NAME);
+    cal = found.length ? found[0] : CalendarApp.createCalendar(CAL_NAME, { timeZone: TZ, summary: 'ふたりのホームから使う、ふたりの予定' });
+    props.setProperty('calendarId', cal.getId());
+  }
+  return cal;
+}
+
+/** 終日の予定は「スクリプトのタイムゾーンの0時」で扱う（Googleカレンダーの決まり） */
+function dayDate_(ymd) {
+  const m = String(ymd || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) throw err_('日付が正しくありません。');
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+function dayStr_(d) { return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd'); }
+
+function whoColors_(me) {
+  const c = {}; const m = me.members || [];
+  if (m[0]) c[m[0]] = CalendarApp.EventColor.BLUE;
+  if (m[1]) c[m[1]] = CalendarApp.EventColor.PALE_RED;
+  c['ふたり'] = CalendarApp.EventColor.GREEN;
+  return c;
+}
+
+function evInfo_(ev, me, colors) {
+  const allDay = ev.isAllDayEvent();
+  let date, endDate, start = '', end = '';
+  if (allDay) {
+    date = dayStr_(ev.getAllDayStartDate());
+    endDate = dayStr_(new Date(ev.getAllDayEndDate().getTime() - 86400000));   // 終わりの日は「次の日」で返ってくるので1日戻す
+  } else {
+    const s = ev.getStartTime(), e = ev.getEndTime();
+    date = Utilities.formatDate(s, TZ, 'yyyy-MM-dd'); start = Utilities.formatDate(s, TZ, 'HH:mm');
+    end = Utilities.formatDate(e, TZ, 'HH:mm'); endDate = Utilities.formatDate(new Date(e.getTime() - 1), TZ, 'yyyy-MM-dd');
+  }
+  if (endDate < date) endDate = date;
+  let who = '';
+  try { who = ev.getTag('who') || ''; } catch (x) {}
+  if (!who) {
+    const col = String(ev.getColor() || '');
+    who = Object.keys(colors).find(k => String(colors[k]) === col && k !== 'ふたり') || 'ふたり';
+  }
+  return {
+    id: ev.getId(), title: ev.getTitle(), allDay: allDay, date: date, endDate: endDate, start: start, end: end,
+    location: ev.getLocation() || '', memo: ev.getDescription() || '', who: who, recurring: ev.isRecurringEvent()
+  };
+}
+
+function getEvents_(me, from, to) {
+  const start = dayDate_(from), endEx = new Date(dayDate_(to).getTime() + 86400000);
+  if (endEx - start > 75 * 86400000 || endEx <= start) throw err_('期間が正しくありません。');
+  const colors = whoColors_(me);
+  const events = calendar_().getEvents(start, endEx).map(ev => evInfo_(ev, me, colors));
+  let holidays = [];
+  try {
+    const h = CalendarApp.getCalendarById(HOLIDAY_CAL);
+    if (h) holidays = h.getEvents(start, endEx).map(ev => ({ date: dayStr_(ev.getAllDayStartDate()), name: ev.getTitle() }));
+  } catch (e) {}
+  return { from: from, to: to, events: events, holidays: holidays };
+}
+
+function saveEvent_(me, id, x, range) {
+  const title = String(x && x.title || '').trim().slice(0, 100);
+  if (!title) throw err_('予定の名前を入れてください。');
+  const colors = whoColors_(me);
+  const who = colors[x.who] !== undefined ? x.who : 'ふたり';
+  const cal = calendar_();
+  let s, e;
+  if (x.allDay) {
+    s = dayDate_(x.date);
+    const last = x.endDate ? dayDate_(x.endDate) : s;
+    if (last < s) throw err_('終わりの日は始まりの日より後にしてください。');
+    e = new Date(last.getTime() + 86400000);
+  } else {
+    if (!/^\d{2}:\d{2}$/.test(x.start || '') || !/^\d{2}:\d{2}$/.test(x.end || '')) throw err_('時間を入れてください。');
+    dayDate_(x.date);
+    s = Utilities.parseDate(x.date + ' ' + x.start, TZ, 'yyyy-MM-dd HH:mm');
+    e = Utilities.parseDate(x.date + ' ' + x.end, TZ, 'yyyy-MM-dd HH:mm');
+    if (e <= s) e = new Date(e.getTime() + 86400000);   // 22:00〜01:00 のように日をまたぐ予定
+  }
+  const opts = { location: String(x.location || '').slice(0, 200), description: String(x.memo || '').slice(0, 1000) };
+  let ev;
+  if (id) {
+    ev = cal.getEventById(id);
+    if (!ev) throw err_('この予定は見つかりませんでした。画面を更新してください。');
+    if (ev.isRecurringEvent()) throw err_('くり返しの予定は、Googleカレンダーのアプリで編集してください。');
+    ev.setTitle(title); ev.setLocation(opts.location); ev.setDescription(opts.description);
+    if (x.allDay) {
+      if (e - s === 86400000) ev.setAllDayDate(s); else ev.setAllDayDates(s, e);
+    } else ev.setTime(s, e);
+  } else {
+    ev = x.allDay
+      ? (e - s === 86400000 ? cal.createAllDayEvent(title, s, opts) : cal.createAllDayEvent(title, s, e, opts))
+      : cal.createEvent(title, s, e, opts);
+  }
+  ev.setTag('who', who);
+  ev.setColor(colors[who]);
+  return getEvents_(me, range.from, range.to);
+}
+
+function deleteEvent_(me, id, range) {
+  const ev = calendar_().getEventById(id);
+  if (ev) {
+    if (ev.isRecurringEvent()) throw err_('くり返しの予定は、Googleカレンダーのアプリで削除してください。');
+    ev.deleteEvent();
+  }
+  return getEvents_(me, range.from, range.to);
 }
 
 /* =========================================================
@@ -994,6 +1118,7 @@ function setup() {
   money_().getName();
   SpreadsheetApp.openById(TODO_ID).getName();
   SpreadsheetApp.openById(FIXED_ID).getName();
+  Logger.log('カレンダー：' + calendar_().getName() + '（' + calendar_().getId() + '）');
   DriveApp.getFolderById(FOLDERS.homePhotos).getName();
   UrlFetchApp.fetch('https://oauth2.googleapis.com/tokeninfo?id_token=x', { muteHttpExceptions: true });
   Logger.log('準備OK');

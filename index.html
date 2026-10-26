@@ -70,6 +70,7 @@
     <div class="notices" id="notices"></div>
     <div class="tiles">
       <button class="tile wide c-money" type="button" data-go="money" id="tile-money"></button>
+      <button class="tile wide c-cal" type="button" data-go="cal" id="tile-cal"></button>
       <button class="tile half c-todo" type="button" data-go="todo" id="tile-todo"></button>
       <button class="tile half c-shop" type="button" data-go="shop" id="tile-shop"></button>
       <button class="tile small c-docs" type="button" data-go="docs"><span class="t-name">書類</span><span class="t-sub">契約書・保証書など</span></button>
@@ -301,6 +302,52 @@
       <div class="list" id="fx-items"></div>
     </section>
     <div class="sheet-link" id="fixed-sheet-link"></div>
+  </div>
+
+  <!-- カレンダー -->
+  <div class="view" id="v-cal" hidden>
+    <div class="bar-top">
+      <div>
+        <button class="back" type="button" data-go="home">← ホーム</button>
+        <h1>カレンダー</h1>
+      </div>
+      <button class="refresh" type="button" data-refresh="cal">更新</button>
+    </div>
+    <div class="month-nav">
+      <button type="button" class="icon-btn" data-calmonth="-1" aria-label="前の月">‹</button>
+      <div class="month-label num" id="cal-month"></div>
+      <button type="button" class="icon-btn" data-calmonth="1" aria-label="次の月">›</button>
+    </div>
+    <div>
+      <div class="cal-grid" id="cal-grid"></div>
+      <div class="cal-legend" id="cal-legend"></div>
+    </div>
+    <section>
+      <div class="sec-head"><h2 id="cal-day-title"></h2><button class="btn" type="button" data-action="open-ev">＋ 予定</button></div>
+      <form class="form" id="ev-form" hidden novalidate>
+        <div class="ftitle" id="ev-form-title">予定を追加</div>
+        <div class="field"><label for="ev-title">予定</label><input id="ev-title" maxlength="100" placeholder="例：ご飯、〇〇の結婚式、引越し"></div>
+        <div class="field"><span class="lab">だれの予定</span><div class="seg" id="ev-who"></div></div>
+        <label class="check-line"><input type="checkbox" id="ev-allday"> 終日</label>
+        <div class="grid2">
+          <div class="field"><label for="ev-date">日付</label><input id="ev-date" type="date"></div>
+          <div class="field" id="ev-enddate-field"><label for="ev-enddate">終わりの日（連休など）</label><input id="ev-enddate" type="date"></div>
+        </div>
+        <div class="grid2" id="ev-time-field">
+          <div class="field"><label for="ev-start">開始</label><input id="ev-start" type="time" step="300"></div>
+          <div class="field"><label for="ev-end">終了</label><input id="ev-end" type="time" step="300"></div>
+        </div>
+        <div class="field"><label for="ev-loc">場所（任意）</label><input id="ev-loc" maxlength="200"></div>
+        <div class="field"><label for="ev-memo">メモ（任意）</label><input id="ev-memo" maxlength="500"></div>
+        <div class="err" id="ev-err"></div>
+        <div class="actions">
+          <button type="button" class="btn ghost danger-text" id="ev-delete" data-action="delete-ev" hidden>この予定を削除</button>
+          <button type="button" class="btn ghost" data-action="close-ev">やめる</button><button type="submit" class="btn">保存する</button>
+        </div>
+      </form>
+      <div class="list" id="cal-day-list"></div>
+    </section>
+    <div class="sheet-link"><a href="https://calendar.google.com/calendar/r" target="_blank" rel="noopener">Googleカレンダーで開く</a></div>
   </div>
 
   <!-- 買い物リスト -->
