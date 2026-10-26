@@ -1,14 +1,14 @@
 :root{
-  /* コルクボードと紙 */
-  --cork:#B98A5E; --cork-d1:#9C7048; --cork-d2:#D3AA80;
-  --sheet:#FBF8F1; --bg:#F4F0E7; --surface:#FFFFFF; --ink:#2A2622; --muted:#6B645B; --line:#E4DED2; --chip:#EFEAE0;
-  --shadow:0 1px 2px rgba(60,35,10,.28),0 6px 14px rgba(60,35,10,.18);
-  --note-y:#FCE97F; --note-y-ink:#4A3D06; --note-b:#CFE4F7; --note-b-ink:#123A61; --note-p:#F8D5DF; --note-p-ink:#5A1D30;
-  --note-g:#D7EDC6; --note-g-ink:#25461A; --note-o:#FBDDC4; --note-o-ink:#6A3510; --note-v:#E3DDF5; --note-v-ink:#3B2F70;
-  --pin-r:#D9534F; --pin-r2:#A8322E; --pin-b:#3A78C9; --pin-b2:#255592; --pin-y:#E3B341; --pin-y2:#B88A1C; --pin-g:#3B7A4A; --pin-g2:#275534;
-  --tape:rgba(240,214,140,.85);
+  /* コルクボードと紙（60%：コルクと紙／30%：インク／10%：画鋲の赤とふたりの色） */
+  --cork:#B89573; --cork-d1:#9E7A57; --cork-d2:#CDB08F;
+  --sheet:#FAF6EE; --bg:#F3EEE4; --surface:#FFFDF8; --ink:#2F2924; --muted:#6E655B; --line:#E6DFD2; --chip:#EEE8DC;
+  --shadow:0 1px 2px rgba(70,45,20,.22),0 6px 14px rgba(70,45,20,.16);
+  --note-y:#F6E3A1; --note-y-ink:#5A4612; --note-b:#D4E3EF; --note-b-ink:#1E3D5A; --note-p:#F3D6DC; --note-p-ink:#6A2738;
+  --note-g:#DDE8CC; --note-g-ink:#2E4A1F; --note-o:#F5DCC6; --note-o-ink:#6B3A17; --note-v:#E2DCEF; --note-v-ink:#3E3368;
+  --pin-r:#CF4F45; --pin-r2:#A2372F; --pin-b:#4373B8; --pin-b2:#2D548C; --pin-y:#DDB24C; --pin-y2:#AE8423; --pin-g:#4F8A5B; --pin-g2:#356341;
+  --tape:rgba(236,214,160,.85);
   /* ふたりの色 */
-  --m0:#2D62C9; --m0-soft:#DFE8F8; --m1:#D24F6E; --m1-soft:#F8E0E6; --both:#3E7C5E; --both-soft:#DDEEE5;
+  --m0:#3A6CB8; --m0-soft:#DCE6F3; --m1:#C9566F; --m1-soft:#F5DDE2; --both:#4C8463; --both-soft:#DCEBE1;
   --plan:#8A968F; --warn:#B9420F;
   --money-bg:#FBEFCF; --money-ink:#6B4800; --todo-bg:#DCEFE2; --todo-ink:#1F5A3B;
   --docs-bg:#DFE8F7; --docs-ink:#1F4886; --photos-bg:#F8E0E8; --photos-ink:#86304C;
@@ -20,12 +20,12 @@
   --tabbar-h:64px;
 }
 @media (prefers-color-scheme:dark){:root{
-  --cork:#4A3626; --cork-d1:#3A2A1D; --cork-d2:#5E4532;
-  --sheet:#2A2622; --bg:#211E1B; --surface:#332E29; --ink:#EEE8DE; --muted:#B3AA9C; --line:#433C35; --chip:#3A342E;
+  --cork:#3D2E22; --cork-d1:#2F2319; --cork-d2:#4E3B2C;
+  --sheet:#2A2521; --bg:#211D1A; --surface:#322C27; --ink:#EFE9DF; --muted:#B5AB9D; --line:#443C35; --chip:#3A332D;
   --shadow:0 1px 2px rgba(0,0,0,.5),0 6px 16px rgba(0,0,0,.4);
-  --note-y:#5C5222; --note-y-ink:#FFF1B3; --note-b:#24405C; --note-b-ink:#D6E8FA; --note-p:#5A2E3B; --note-p-ink:#FBDCE5;
-  --note-g:#2F4A28; --note-g-ink:#DDF2CF; --note-o:#5A3A22; --note-o-ink:#FCE0CA; --note-v:#3A3260; --note-v-ink:#E3DDF8;
-  --tape:rgba(150,125,70,.75);
+  --note-y:#55492A; --note-y-ink:#FBEFC6; --note-b:#2A3D50; --note-b-ink:#DCE8F3; --note-p:#553440; --note-p-ink:#F8DDE3;
+  --note-g:#34442B; --note-g-ink:#E2EDD5; --note-o:#553B28; --note-o-ink:#F8E2CF; --note-v:#3C3557; --note-v-ink:#E6E0F3;
+  --tape:rgba(150,125,80,.7);
   --m0:#86A9F2; --m0-soft:#223049; --m1:#F28FA7; --m1-soft:#432630; --both:#7FCBA3; --both-soft:#1F3a2D;
   --plan:#6E7973; --warn:#F3A06F;
   --money-bg:#3A2F14; --money-ink:#F1CF78; --todo-bg:#1B3427; --todo-ink:#93D6B0;
@@ -472,3 +472,24 @@ input,select.in{font:inherit;color:var(--ink);background:var(--bg);border:1px so
 /* 紙らしく角は小さめに */
 .list,.person,.form,.add-todo,.sc-card,.mcard,.cal-grid,.album .cover,.more-item,.q-btn{border-radius:6px}
 .mcard{box-shadow:0 1px 2px rgba(60,35,10,.12)}
+
+/* あいちゃんへの記念日メッセージ */
+.love-note{position:relative;background:var(--note-p);color:var(--note-p-ink);padding:20px 18px 16px;box-shadow:var(--shadow);transform:rotate(-1deg);margin:8px 6px 0;overflow:visible}
+.love-text{font-size:19px;line-height:1.7}
+.love-from{font-size:15px;text-align:right;margin-top:6px}
+.pin-heart{background:none;border:none;box-shadow:none;color:var(--pin-r);font-size:22px;line-height:14px;top:-8px;margin-left:-8px;width:16px;text-align:center}
+.pin-heart::after{display:none}
+.hearts{position:absolute;inset:0;pointer-events:none;overflow:visible}
+.hearts span{position:absolute;bottom:10px;font-size:16px;color:var(--pin-r);opacity:0}
+.hearts span:nth-child(1){left:8%} .hearts span:nth-child(2){left:22%;font-size:13px} .hearts span:nth-child(3){left:38%;font-size:20px}
+.hearts span:nth-child(4){left:55%} .hearts span:nth-child(5){left:68%;font-size:14px} .hearts span:nth-child(6){left:80%;font-size:18px} .hearts span:nth-child(7){left:92%;font-size:12px}
+@media (prefers-reduced-motion:no-preference){
+  .love-note.pop{animation:love-in .5s cubic-bezier(.2,.9,.3,1.3)}
+  .love-note.pop .hearts span{animation:heart-up 2.4s ease-out forwards}
+  .love-note.pop .hearts span:nth-child(2){animation-delay:.15s} .love-note.pop .hearts span:nth-child(3){animation-delay:.3s}
+  .love-note.pop .hearts span:nth-child(4){animation-delay:.1s} .love-note.pop .hearts span:nth-child(5){animation-delay:.45s}
+  .love-note.pop .hearts span:nth-child(6){animation-delay:.25s} .love-note.pop .hearts span:nth-child(7){animation-delay:.55s}
+}
+@keyframes love-in{from{transform:rotate(-6deg) scale(.85);opacity:0}to{transform:rotate(-1deg) scale(1);opacity:1}}
+@keyframes heart-up{0%{opacity:0;transform:translateY(0) scale(.6)}20%{opacity:1}100%{opacity:0;transform:translateY(-120px) scale(1.15)}}
+.love-text .kao{white-space:nowrap;display:inline-block}

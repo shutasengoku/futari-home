@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <title>ふたりのホーム</title>
-<meta name="theme-color" content="#B98A5E" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#3E2D20" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#B89573" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#3D2E22" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-title" content="ふたりのホーム">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-180.png">
@@ -49,6 +49,12 @@
 
   <!-- ホーム（コルクボード） -->
   <div class="view board" id="v-home" hidden>
+    <div class="love-note" id="love-note" hidden>
+      <span class="pin pin-heart" aria-hidden="true">♥</span>
+      <div class="love-text hand" id="love-text"></div>
+      <div class="love-from hand" id="love-from"></div>
+      <div class="hearts" aria-hidden="true"><span>♥</span><span>♡</span><span>♥</span><span>♡</span><span>♥</span><span>♡</span><span>♥</span></div>
+    </div>
     <div class="polaroid" id="hero-card">
       <span class="pin pin-r" aria-hidden="true"></span>
       <div class="pol-photo">
@@ -76,8 +82,7 @@
       <button class="note wide n-paper tape" type="button" data-go="money" id="tile-money"></button>
       <button class="note half n-yellow tilt-r" type="button" data-go="shop" id="tile-shop"><span class="pin pin-g" aria-hidden="true"></span></button>
       <button class="note half n-blue tilt-l" type="button" data-go="todo" id="tile-todo"></button>
-      <button class="note half n-pink tilt-l2" type="button" data-go="cal" id="tile-anniv"></button>
-      <button class="note half n-paper tilt-r2" type="button" data-go="cal" id="tile-cal"></button>
+      <button class="note wide n-paper tilt-r2" type="button" data-go="cal" id="tile-cal"></button>
     </div>
   </div>
 

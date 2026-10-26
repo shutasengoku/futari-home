@@ -230,24 +230,24 @@ function renderHome(){
   $('tile-shop').innerHTML = '<span class="pin pin-g" aria-hidden="true"></span><div class="t-head"><span class="t-name">買い物</span><span class="t-go">→</span></div>' +
     '<div class="t-big num">' + shopOpen.length + '<span class="t-sub" style="font-size:12px;margin-left:4px">品</span></div>' +
     (shopOpen.length ? '<div class="mini-list">' + shopOpen.slice(0, 2).map(function(x){ return '<div>' + esc(x.name) + '</div>'; }).join('') + '</div>' : '<div class="t-sub">買うものはなし</div>');
-  renderAnnivTile();
+  renderLoveNote();
   renderNotices();
   renderCalTile();
   renderHomeSecretState();
 }
-function renderAnnivTile(){
-  var el = $('tile-anniv'), a = anniversaryInfo();
-  if (!a) { el.innerHTML = '<span class="pin pin-b" aria-hidden="true"></span><div class="t-name">記念日</div><div class="t-sub">「暮らし」の表で設定できます</div>'; return; }
-  var t = todayDate(), day = a.start.getDate(), next = null;
-  for (var i = 0; i < 3 && !next; i++) {
-    var c = new Date(t.getFullYear(), t.getMonth() + i, day);
-    if (c.getDate() === day && c > t) next = c;
-  }
-  var nm = next ? (next.getFullYear() - a.start.getFullYear()) * 12 + (next.getMonth() - a.start.getMonth()) : 0;
-  var label = next ? (nm % 12 === 0 ? (nm / 12) + '周年' : Math.floor(nm / 12) + '年' + (nm % 12) + 'ヶ月') : '';
-  el.innerHTML = '<span class="pin pin-b" aria-hidden="true"></span><div class="t-head"><span class="t-name">次の記念日</span></div>' +
-    (a.monthDay ? '<div class="t-big">今日！</div><div class="t-sub">' + esc(a.label) + a.totalMonths + 'ヶ月</div>'
-      : '<div class="t-big num">あと' + daysBetween(t, next) + '日</div><div class="t-sub">' + mdLabel(next) + 'で' + label + '</div>');
+/* ---------- あいちゃんへの記念日メッセージ（しゅうくんから） ---------- */
+var LOVE = {to:'あいちゃん', from:'しゅうより'};
+function renderLoveNote(){
+  var el = $('love-note'), a = anniversaryInfo();
+  if (!a || !S.me || S.me.member !== LOVE.to || !a.monthDay) { el.hidden = true; return; }
+  var msg = a.m === 0
+    ? LOVE.to + 'いつもありがとう！<br>' + a.y + '周年だね。' + (a.y + 1) + '年目もよろしくね～<span class="kao">(｡･ω･｡)ﾉ♡</span>'
+    : LOVE.to + 'いつもありがとう！<br>' + (a.y ? a.y + '年' : '') + a.m + 'ヶ月目もよろしくね～<span class="kao">(｡･ω･｡)ﾉ♡</span>';
+  $('love-text').innerHTML = msg;
+  $('love-from').textContent = LOVE.from;
+  var first = el.hidden;
+  el.hidden = false;
+  if (first) { el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); }
 }
 function renderMore(){
   if (!S.t || !S.h) return;
@@ -1434,7 +1434,7 @@ function renderCalTile(){
   var list = S.up.events.filter(function(e){ return e.date > today; }).map(function(e){
     var k = e.date < today ? today : e.date;
     return {e:e, k:k, sort:k + (e.allDay ? ' ' : e.date < today ? ' ' : e.start)};
-  }).sort(function(a, b){ return a.sort.localeCompare(b.sort); }).slice(0, 3);
+  }).sort(function(a, b){ return a.sort.localeCompare(b.sort); }).slice(0, 4);
   el.innerHTML = head +
     (list.length ? '<div class="cal-rows">' + list.map(function(x){
       var e = x.e, time = e.allDay ? '' : (e.date < today ? '' : ' ' + e.start);
