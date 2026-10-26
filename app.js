@@ -1069,7 +1069,11 @@ function anniversaryInfo(){
   if (next < today) next = new Date(today.getFullYear() + 1, start.getMonth(), start.getDate());
   var years = next.getFullYear() - start.getFullYear();
   var nextHundred = Math.ceil((days + 1) / 100) * 100;
-  return {start:start, days:days, next:next, years:years, untilNext:daysBetween(today, next), nextHundred:nextHundred, untilHundred:nextHundred - days, label:S.h.anniversaryLabel || '記念日'};
+  var y = today.getFullYear() - start.getFullYear(), m = today.getMonth() - start.getMonth(), dd = today.getDate() - start.getDate();
+  if (dd < 0) m--;
+  if (m < 0) { y--; m += 12; }
+  return {start:start, days:days, next:next, years:years, untilNext:daysBetween(today, next), nextHundred:nextHundred, untilHundred:nextHundred - days,
+    y:y, m:m, totalMonths:y * 12 + m, monthDay: today.getDate() === start.getDate(), label:S.h.anniversaryLabel || '付き合って'};
 }
 
 /* ---------- ごみの日 ---------- */
@@ -1094,10 +1098,11 @@ function renderNotices(){
   var a = anniversaryInfo();
   if (a) {
     $('greet-anniv').hidden = false;
-    $('greet-anniv').textContent = a.label + '（' + a.start.getFullYear() + '.' + (a.start.getMonth() + 1) + '.' + a.start.getDate() + '）から ' + a.days.toLocaleString('ja-JP') + '日';
-    if (a.untilNext === 0) out.push({tag:'anniv', t:'記念日', body:'今日は' + a.years + '周年の' + esc(a.label) + 'です 🎉'});
-    else if (a.untilNext <= 30) out.push({tag:'anniv', t:'記念日', body:a.years + '周年の' + esc(a.label) + 'まで あと' + a.untilNext + '日', sub:mdLabel(a.next)});
-    else if (a.untilHundred <= 7) out.push({tag:'anniv', t:'記念日', body:a.nextHundred.toLocaleString('ja-JP') + '日目まで あと' + a.untilHundred + '日'});
+    $('greet-anniv').textContent = a.label + ' ' + (a.y ? a.y + '年' : '') + a.m + 'ヶ月（' + a.days.toLocaleString('ja-JP') + '日）';
+    if (a.untilNext === 0) out.push({tag:'anniv', t:'記念日', body:'今日で' + esc(a.label) + a.years + '年！ ' + a.years + '周年の記念日です 🎉'});
+    else if (a.monthDay) out.push({tag:'anniv', t:'記念日', body:'今日で' + esc(a.label) + a.totalMonths + 'ヶ月 🎉'});
+    else if (a.untilNext <= 30) out.push({tag:'anniv', t:'記念日', body:a.years + '周年の記念日まで あと' + a.untilNext + '日', sub:mdLabel(a.next)});
+    else if (a.untilHundred <= 7) out.push({tag:'anniv', t:'記念日', body:esc(a.label) + a.nextHundred.toLocaleString('ja-JP') + '日まで あと' + a.untilHundred + '日'});
   }
   var tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
   var tg = garbageOn(tomorrow);
