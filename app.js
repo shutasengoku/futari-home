@@ -183,6 +183,7 @@ function buildStatic(){
   $('money-sheet-link').innerHTML = '<a href="' + esc(m.sheetUrl) + '" target="_blank" rel="noopener">台帳をスプレッドシートで開く</a>';
   $('todo-sheet-link').innerHTML = '<a href="' + esc(S.t.sheetUrl) + '" target="_blank" rel="noopener">やることをスプレッドシートで開く</a>';
   $('root-link').href = S.folders.root;
+  if (S.h) $('cal-sheet-link').href = S.h.sheetUrl;
   $('pj-b0-label').textContent = (m.members[0] || '') + 'の予算（円）';
   $('pj-b1-label').textContent = (m.members[1] || '') + 'の予算（円）';
   $('it-cat').innerHTML = S.f.categories.map(function(c){ return '<option>' + esc(c) + '</option>'; }).join('');

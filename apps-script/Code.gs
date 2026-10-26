@@ -13,11 +13,9 @@
 const CLIENT_ID = '264124983411-o94hvp7221a45f6c59trdv628nt97flo.apps.googleusercontent.com';
 
 const MONEY_ID = '1lsNoI837NrxVJTpXI92RdQQLnfjNYcbPqSqEUOAWd6M';   // お金/ふたりのお金 台帳
-const TODO_ID  = '1551Q4cmKDR548uY1oc_eaK-gOAd8cml3658_1ez3uU0';   // 暮らし/ふたりの暮らし（やること・買い物・保証・ホーム設定）
+const TODO_ID  = '1551Q4cmKDR548uY1oc_eaK-gOAd8cml3658_1ez3uU0';   // 暮らし/ふたりの暮らし（やること・予定・買い物・保証・ホーム設定）
 const FIXED_ID = '105jNfd5tCU2Sj_EIoxdajUWtUfKB5PBQZ4FQHfJZSig';   // お金/ふたりの共通口座（固定費・お小遣い・残高）
-const VAULT_NAME = 'ふたりの機密（暗号化済み）.json';
-const CAL_NAME = 'ふたりのカレンダー';                                // 初めて使うときに自動で作られる
-const HOLIDAY_CAL = 'ja.japanese#holiday@group.v.calendar.google.com';                // 機密フォルダに作られる。中身は暗号化された文字だけ
+const VAULT_NAME = 'ふたりの機密（暗号化済み）.json';                // 機密フォルダに作られる。中身は暗号化された文字だけ
 const FOLDERS = {
   root:       '1wB1vA_-J3nNG4dHAbefkivivaZoTHi6f',
   money:      '1f6Awrp3VWKHOUDT5DAwiC1LqvUMxOsUe',
@@ -528,120 +526,108 @@ function deleteWarranty_(id) {
 }
 
 /* =========================================================
- * カレンダー（しゅうくんのGoogleカレンダーに「ふたりのカレンダー」を作り、ふたりで共有）
+ * 予定（「暮らし」の表の「予定」タブに保存。祝日はここで計算）
  * ======================================================= */
 
-function calendar_() {
-  const props = PropertiesService.getScriptProperties();
-  const id = props.getProperty('calendarId');
-  let cal = id ? CalendarApp.getCalendarById(id) : null;
-  if (!cal) {
-    const found = CalendarApp.getCalendarsByName(CAL_NAME);
-    cal = found.length ? found[0] : CalendarApp.createCalendar(CAL_NAME, { timeZone: TZ, summary: 'ふたりのホームから使う、ふたりの予定' });
-    props.setProperty('calendarId', cal.getId());
-  }
-  return cal;
+const EV_W = 10;   // 予定 日付 終わりの日 終日 開始 終了 だれ 場所 メモ ID
+
+function hm_(v) {
+  if (v instanceof Date) return Utilities.formatDate(v, TZ, 'HH:mm');
+  const m = String(v || '').match(/^(\d{1,2}):(\d{2})/);
+  return m ? ('0' + m[1]).slice(-2) + ':' + m[2] : '';
 }
 
-/** 終日の予定は「スクリプトのタイムゾーンの0時」で扱う（Googleカレンダーの決まり） */
-function dayDate_(ymd) {
-  const m = String(ymd || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) throw err_('日付が正しくありません。');
-  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-}
-function dayStr_(d) { return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd'); }
-
-function whoColors_(me) {
-  const c = {}; const m = me.members || [];
-  if (m[0]) c[m[0]] = CalendarApp.EventColor.BLUE;
-  if (m[1]) c[m[1]] = CalendarApp.EventColor.PALE_RED;
-  c['ふたり'] = CalendarApp.EventColor.GREEN;
-  return c;
+function eventRows_(ss) {
+  return readRows_(ss.getSheetByName('予定'), EV_W, 9, r => r[0] !== '' && r[1] !== '').map(r => {
+    const date = fmtDate_(r[1]);
+    let endDate = r[3] === true ? (fmtDate_(r[2]) || date) : date;
+    if (endDate < date) endDate = date;
+    return {
+      id: String(r[9]), title: String(r[0]), date: date, endDate: endDate, allDay: r[3] === true,
+      start: r[3] === true ? '' : hm_(r[4]), end: r[3] === true ? '' : hm_(r[5]),
+      who: String(r[6] || 'ふたり'), location: String(r[7] || ''), memo: String(r[8] || ''), recurring: false
+    };
+  });
 }
 
-function evInfo_(ev, me, colors) {
-  const allDay = ev.isAllDayEvent();
-  let date, endDate, start = '', end = '';
-  if (allDay) {
-    date = dayStr_(ev.getAllDayStartDate());
-    endDate = dayStr_(new Date(ev.getAllDayEndDate().getTime() - 86400000));   // 終わりの日は「次の日」で返ってくるので1日戻す
-  } else {
-    const s = ev.getStartTime(), e = ev.getEndTime();
-    date = Utilities.formatDate(s, TZ, 'yyyy-MM-dd'); start = Utilities.formatDate(s, TZ, 'HH:mm');
-    end = Utilities.formatDate(e, TZ, 'HH:mm'); endDate = Utilities.formatDate(new Date(e.getTime() - 1), TZ, 'yyyy-MM-dd');
-  }
-  if (endDate < date) endDate = date;
-  let who = '';
-  try { who = ev.getTag('who') || ''; } catch (x) {}
-  if (!who) {
-    const col = String(ev.getColor() || '');
-    who = Object.keys(colors).find(k => String(colors[k]) === col && k !== 'ふたり') || 'ふたり';
-  }
-  return {
-    id: ev.getId(), title: ev.getTitle(), allDay: allDay, date: date, endDate: endDate, start: start, end: end,
-    location: ev.getLocation() || '', memo: ev.getDescription() || '', who: who, recurring: ev.isRecurringEvent()
-  };
-}
-
-function getEvents_(me, from, to) {
-  const start = dayDate_(from), endEx = new Date(dayDate_(to).getTime() + 86400000);
-  if (endEx - start > 75 * 86400000 || endEx <= start) throw err_('期間が正しくありません。');
-  const colors = whoColors_(me);
-  const events = calendar_().getEvents(start, endEx).map(ev => evInfo_(ev, me, colors));
-  let holidays = [];
-  try {
-    const h = CalendarApp.getCalendarById(HOLIDAY_CAL);
-    if (h) holidays = h.getEvents(start, endEx).map(ev => ({ date: dayStr_(ev.getAllDayStartDate()), name: ev.getTitle() }));
-  } catch (e) {}
-  return { from: from, to: to, events: events, holidays: holidays };
+function getEvents_(me, from, to, ss) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(from)) || !/^\d{4}-\d{2}-\d{2}$/.test(String(to)) || to < from) throw err_('期間が正しくありません。');
+  const events = eventRows_(ss || kurashi_()).filter(e => e.endDate >= from && e.date <= to);
+  return { from: from, to: to, events: events, holidays: holidaysBetween_(from, to) };
 }
 
 function saveEvent_(me, id, x, range) {
-  const title = String(x && x.title || '').trim().slice(0, 100);
+  const title = clean_(x && x.title, 100);
   if (!title) throw err_('予定の名前を入れてください。');
-  const colors = whoColors_(me);
-  const who = colors[x.who] !== undefined ? x.who : 'ふたり';
-  const cal = calendar_();
-  let s, e;
-  if (x.allDay) {
-    s = dayDate_(x.date);
-    const last = x.endDate ? dayDate_(x.endDate) : s;
-    if (last < s) throw err_('終わりの日は始まりの日より後にしてください。');
-    e = new Date(last.getTime() + 86400000);
-  } else {
-    if (!/^\d{2}:\d{2}$/.test(x.start || '') || !/^\d{2}:\d{2}$/.test(x.end || '')) throw err_('時間を入れてください。');
-    dayDate_(x.date);
-    s = Utilities.parseDate(x.date + ' ' + x.start, TZ, 'yyyy-MM-dd HH:mm');
-    e = Utilities.parseDate(x.date + ' ' + x.end, TZ, 'yyyy-MM-dd HH:mm');
-    if (e <= s) e = new Date(e.getTime() + 86400000);   // 22:00〜01:00 のように日をまたぐ予定
-  }
-  const opts = { location: String(x.location || '').slice(0, 200), description: String(x.memo || '').slice(0, 1000) };
-  let ev;
-  if (id) {
-    ev = cal.getEventById(id);
-    if (!ev) throw err_('この予定は見つかりませんでした。画面を更新してください。');
-    if (ev.isRecurringEvent()) throw err_('くり返しの予定は、Googleカレンダーのアプリで編集してください。');
-    ev.setTitle(title); ev.setLocation(opts.location); ev.setDescription(opts.description);
-    if (x.allDay) {
-      if (e - s === 86400000) ev.setAllDayDate(s); else ev.setAllDayDates(s, e);
-    } else ev.setTime(s, e);
-  } else {
-    ev = x.allDay
-      ? (e - s === 86400000 ? cal.createAllDayEvent(title, s, opts) : cal.createAllDayEvent(title, s, e, opts))
-      : cal.createEvent(title, s, e, opts);
-  }
-  ev.setTag('who', who);
-  ev.setColor(colors[who]);
-  return getEvents_(me, range.from, range.to);
+  const date = fmtDate_(x.date);
+  if (!date) throw err_('日付を入れてください。');
+  const allDay = !!x.allDay;
+  const endDate = allDay ? (fmtDate_(x.endDate) || date) : '';
+  if (allDay && endDate < date) throw err_('終わりの日は始まりの日より後にしてください。');
+  const start = allDay ? '' : hm_(x.start), end = allDay ? '' : hm_(x.end);
+  if (!allDay && (!start || !end)) throw err_('開始と終了の時間を入れてください。');
+  const who = ((me.members || []).concat(['ふたり'])).indexOf(x.who) >= 0 ? x.who : 'ふたり';
+  const row = [title, date.replace(/-/g, '/'), endDate && endDate !== date ? endDate.replace(/-/g, '/') : '', allDay,
+    start, end, who, clean_(x.location, 200), clean_(x.memo, 500)];
+  const ss = kurashi_();
+  lock_(() => {
+    const sh = ss.getSheetByName('予定');
+    if (id) {
+      const r = findRow_(sh, 9, id);
+      if (r < 0) throw err_('この予定は見つかりませんでした。画面を更新してください。');
+      sh.getRange(r, 1, 1, 9).setValues([row]);
+    } else {
+      sh.appendRow(row.concat([newId_()]));
+    }
+  });
+  return getEvents_(me, range.from, range.to, ss);
 }
 
 function deleteEvent_(me, id, range) {
-  const ev = calendar_().getEventById(id);
-  if (ev) {
-    if (ev.isRecurringEvent()) throw err_('くり返しの予定は、Googleカレンダーのアプリで削除してください。');
-    ev.deleteEvent();
+  const ss = kurashi_();
+  lock_(() => { const sh = ss.getSheetByName('予定'); const r = findRow_(sh, 9, id); if (r > 0) sh.deleteRow(r); });
+  return getEvents_(me, range.from, range.to, ss);
+}
+
+/** 日本の祝日（2020年以降の決まり。振替休日・国民の休日を含む） */
+function jpHolidays_(y) {
+  const pad = n => ('0' + n).slice(-2);
+  const key = (m, d) => y + '-' + pad(m) + '-' + pad(d);
+  const dow = (m, d) => new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  const nthMon = (m, n) => 1 + ((8 - dow(m, 1)) % 7) + (n - 1) * 7;
+  const h = {};
+  const add = (m, d, name) => { h[key(m, d)] = name; };
+  add(1, 1, '元日'); add(1, nthMon(1, 2), '成人の日'); add(2, 11, '建国記念の日'); add(2, 23, '天皇誕生日');
+  add(3, Math.floor(20.8431 + 0.242194 * (y - 1980) - Math.floor((y - 1980) / 4)), '春分の日');
+  add(4, 29, '昭和の日'); add(5, 3, '憲法記念日'); add(5, 4, 'みどりの日'); add(5, 5, 'こどもの日');
+  add(7, nthMon(7, 3), '海の日'); add(8, 11, '山の日'); add(9, nthMon(9, 3), '敬老の日');
+  add(9, Math.floor(23.2488 + 0.242194 * (y - 1980) - Math.floor((y - 1980) / 4)), '秋分の日');
+  add(10, nthMon(10, 2), 'スポーツの日'); add(11, 3, '文化の日'); add(11, 23, '勤労感謝の日');
+  const base = Object.keys(h).sort();
+  const ms = k => Date.UTC(Number(k.slice(0, 4)), Number(k.slice(5, 7)) - 1, Number(k.slice(8, 10)));
+  const toKey = t => { const d = new Date(t); return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()); };
+  // 国民の休日：祝日にはさまれた平日
+  base.forEach(k => {
+    const mid = toKey(ms(k) + 86400000), next = toKey(ms(k) + 2 * 86400000);
+    if (h[next] && !h[mid] && new Date(ms(mid)).getUTCDay() !== 0) h[mid] = '国民の休日';
+  });
+  // 振替休日：日曜の祝日のあと、最初の祝日でない日
+  base.forEach(k => {
+    if (new Date(ms(k)).getUTCDay() !== 0) return;
+    let t = ms(k) + 86400000;
+    while (h[toKey(t)]) t += 86400000;
+    h[toKey(t)] = '振替休日';
+  });
+  return h;
+}
+
+function holidaysBetween_(from, to) {
+  const out = [];
+  for (let y = Number(from.slice(0, 4)); y <= Number(to.slice(0, 4)); y++) {
+    const h = jpHolidays_(y);
+    Object.keys(h).sort().forEach(k => { if (k >= from && k <= to) out.push({ date: k, name: h[k] }); });
   }
-  return getEvents_(me, range.from, range.to);
+  return out;
 }
 
 /* =========================================================
@@ -1118,7 +1104,6 @@ function setup() {
   money_().getName();
   SpreadsheetApp.openById(TODO_ID).getName();
   SpreadsheetApp.openById(FIXED_ID).getName();
-  Logger.log('カレンダー：' + calendar_().getName() + '（' + calendar_().getId() + '）');
   DriveApp.getFolderById(FOLDERS.homePhotos).getName();
   UrlFetchApp.fetch('https://oauth2.googleapis.com/tokeninfo?id_token=x', { muteHttpExceptions: true });
   Logger.log('準備OK');
