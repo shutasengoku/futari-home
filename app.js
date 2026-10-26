@@ -67,7 +67,8 @@ function runTodo(fn, args, okMsg){
 }
 
 /* ---------- 画面の切り替え ---------- */
-var VIEWS = ['home','money','project','fixed','todo','shop','cal','docs','photos','album','secret'];
+var VIEWS = ['home','money','project','fixed','todo','shop','cal','more','docs','photos','album','secret'];
+var TAB_OF = {home:'home', money:'money', project:'money', fixed:'money', cal:'cal', more:'more', todo:'more', shop:'more', docs:'more', photos:'more', album:'more', secret:'more'};
 function parseHash(){
   var h = decodeURIComponent((location.hash || '').replace('#', ''));
   var parts = h.split('/'), v = parts[0];
@@ -75,11 +76,20 @@ function parseHash(){
 }
 function viewFromHash(){ return parseHash().view; }
 function show(view, param){
+  var calm = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (document.startViewTransition && !calm && S.shownOnce && S.view !== view) { document.startViewTransition(function(){ showNow(view, param); }); return; }
+  showNow(view, param);
+}
+function showNow(view, param){
+  S.shownOnce = true;
   if (S.view === 'secret' && view !== 'secret') lockVault();
   S.view = view; S.param = param || '';
   $('v-login').hidden = true;
   VIEWS.forEach(function(v){ $('v-' + v).hidden = v !== view; });
-  closeViewer();
+  $('tabbar').hidden = false;
+  Array.prototype.forEach.call(document.querySelectorAll('[data-tab]'), function(t){ if (t.dataset.tab === TAB_OF[view]) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current'); });
+  closeViewer(); closeSheet();
+  if (view === 'more') renderMore();
   if (view === 'home') renderHome();
   if (view === 'money') renderMoneyHub();
   if (view === 'project') { if (S.param) S.project = S.param; renderMoney(); }
@@ -92,6 +102,7 @@ function show(view, param){
   if (view === 'album') openAlbum(S.param);
   if (view === 'secret') openSecret();
   window.scrollTo(0, 0);
+  if (S.pending && S.pending.view === view) { var fn = S.pending.fn; S.pending = null; setTimeout(fn, 30); }
 }
 function go(view, param){
   var target = view === 'home' ? '' : view + (param ? '/' + encodeURIComponent(param) : '');
@@ -103,6 +114,7 @@ window.addEventListener('hashchange', function(){ if (S.m) { var h = parseHash()
 function showLogin(msg){
   S.m = null;
   VIEWS.forEach(function(v){ $('v-' + v).hidden = true; });
+  $('tabbar').hidden = true; closeSheet();
   banner(null);
   $('v-login').hidden = false;
   $('login-msg').textContent = msg || '';
@@ -159,6 +171,7 @@ function rerender(){
   else if (v === 'todo') renderTodo();
   else if (v === 'shop') renderShop();
   else if (v === 'cal') renderCal();
+  else if (v === 'more') renderMore();
 }
 function loadAll(fresh){
   if (!getSession()) { showLogin(); return Promise.resolve(); }
@@ -198,35 +211,50 @@ function buildStatic(){
 function renderHome(){
   if (!S.m) return;
   renderClock();
-
-  var M = S.m.members;
-  var fx = fixedMonth(S.f.thisMonth);
+  var fx = fixedMonth(S.f.thisMonth), pfx = fixedMonth(shiftMonth(S.f.thisMonth, -1));
   var actives = S.m.projects.filter(function(p){ return p.status !== '完了'; });
-  var pfx = fixedMonth(shiftMonth(S.f.thisMonth, -1));
-  var rows = '<div class="t-row"><span class="l">共通口座 ' + (+S.f.thisMonth.split('-')[1]) + '月の固定費</span><b class="num">' + yen(fx.total) + '</b></div>';
+  var rows = '<div class="t-row"><span class="l">' + (+S.f.thisMonth.split('-')[1]) + '月の固定費</span><b class="num">' + yen(fx.total) + '</b></div>';
   if (pfx.living != null) rows += '<div class="t-row"><span class="l">' + (+pfx.month.split('-')[1]) + '月の生活費</span><b class="num">' + yen(pfx.living) + '</b></div>';
-  rows += actives.slice(0, 3).map(function(p){
+  rows += actives.slice(0, 2).map(function(p){
     var tt = projTotals(p.name), l = tt.total - tt.used;
     return '<div class="t-row"><span class="l">' + esc(p.name) + ' の残り</span><b class="num' + (l < 0 ? ' over' : '') + '">' + sYen(l) + '</b></div>';
   }).join('');
-  $('tile-money').innerHTML =
-    '<div class="t-head"><span class="t-name">お金</span><span class="t-go">開く →</span></div>' +
-    '<div class="t-rows">' + rows + '</div>';
-  $('tile-secret-state').textContent = S.vault && S.vault.key ? '🔓 開いています' : '🔒 ロック中';
+  $('tile-money').innerHTML = '<div class="t-head"><span class="t-name">お金</span><span class="t-go">→</span></div><div class="t-rows">' + rows + '</div>';
 
   var open = openTodos(), today = S.t.today;
   var over = open.filter(function(x){ return x.due && x.due < today; }).length;
-  $('tile-todo').innerHTML =
-    '<div class="t-head"><span class="t-name">やること</span><span class="t-go">→</span></div>' +
+  $('tile-todo').innerHTML = '<span class="pin pin-r" aria-hidden="true"></span><div class="t-head"><span class="t-name">やること</span><span class="t-go">→</span></div>' +
     '<div class="t-big num">' + open.length + '<span class="t-sub" style="font-size:12px;margin-left:4px">件' + (over ? '・期限切れ' + over : '') + '</span></div>' +
-    (open.length ? '<div class="mini-list">' + open.slice(0, 2).map(function(x){ return '<div>' + esc(x.title) + '</div>'; }).join('') + '</div>' : '<div class="t-sub">全部終わりました</div>');
+    (open.length ? '<div class="mini-list">' + open.slice(0, 2).map(function(x){ return '<div>' + esc(x.title) + '</div>'; }).join('') + '</div>' : '<div class="t-sub">全部おわり！</div>');
   var shopOpen = S.h ? S.h.shop.filter(function(x){ return !x.done; }) : [];
-  $('tile-shop').innerHTML =
-    '<div class="t-head"><span class="t-name">買い物</span><span class="t-go">→</span></div>' +
+  $('tile-shop').innerHTML = '<span class="pin pin-g" aria-hidden="true"></span><div class="t-head"><span class="t-name">買い物</span><span class="t-go">→</span></div>' +
     '<div class="t-big num">' + shopOpen.length + '<span class="t-sub" style="font-size:12px;margin-left:4px">品</span></div>' +
-    (shopOpen.length ? '<div class="mini-list">' + shopOpen.slice(0, 2).map(function(x){ return '<div>' + esc(x.name) + '</div>'; }).join('') + '</div>' : '<div class="t-sub">買うものはありません</div>');
+    (shopOpen.length ? '<div class="mini-list">' + shopOpen.slice(0, 2).map(function(x){ return '<div>' + esc(x.name) + '</div>'; }).join('') + '</div>' : '<div class="t-sub">買うものはなし</div>');
+  renderAnnivTile();
   renderNotices();
   renderCalTile();
+  renderHomeSecretState();
+}
+function renderAnnivTile(){
+  var el = $('tile-anniv'), a = anniversaryInfo();
+  if (!a) { el.innerHTML = '<span class="pin pin-b" aria-hidden="true"></span><div class="t-name">記念日</div><div class="t-sub">「暮らし」の表で設定できます</div>'; return; }
+  var t = todayDate(), day = a.start.getDate(), next = null;
+  for (var i = 0; i < 3 && !next; i++) {
+    var c = new Date(t.getFullYear(), t.getMonth() + i, day);
+    if (c.getDate() === day && c > t) next = c;
+  }
+  var nm = next ? (next.getFullYear() - a.start.getFullYear()) * 12 + (next.getMonth() - a.start.getMonth()) : 0;
+  var label = next ? (nm % 12 === 0 ? (nm / 12) + '周年' : Math.floor(nm / 12) + '年' + (nm % 12) + 'ヶ月') : '';
+  el.innerHTML = '<span class="pin pin-b" aria-hidden="true"></span><div class="t-head"><span class="t-name">次の記念日</span></div>' +
+    (a.monthDay ? '<div class="t-big">今日！</div><div class="t-sub">' + esc(a.label) + a.totalMonths + 'ヶ月</div>'
+      : '<div class="t-big num">あと' + daysBetween(t, next) + '日</div><div class="t-sub">' + mdLabel(next) + 'で' + label + '</div>');
+}
+function renderMore(){
+  if (!S.t || !S.h) return;
+  var o = openTodos().length, sh = S.h.shop.filter(function(x){ return !x.done; }).length;
+  $('more-todo').textContent = o ? '残り' + o + '件' : '全部おわり';
+  $('more-shop').textContent = sh ? sh + '品' : '買うものはなし';
+  renderHomeSecretState();
 }
 
 function renderClock(){
@@ -236,8 +264,7 @@ function renderClock(){
   $('greet-title').textContent = (S.me.member ? S.me.member + '、' : '') + hello;
   $('greet-time').textContent = ('0' + h).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
   var day = d.getDay(), cls = day === 0 ? ' sun' : (day === 6 ? ' sat' : '');
-  $('greet-date').innerHTML = (d.getMonth() + 1) + '月' + d.getDate() + '日' +
-    '<span class="wd' + cls + '">' + '日月火水木金土'.charAt(day) + '曜日</span>';
+  $('greet-date').innerHTML = (d.getMonth() + 1) + '/' + d.getDate() + '<span class="wd' + cls + '">' + '日月火水木金土'.charAt(day) + '</span>';
 }
 setInterval(function(){ if (S.view === 'home') renderClock(); }, 10000);
 
@@ -246,7 +273,6 @@ function renderPhoto(){
   var img = $('hero-img'), card = $('hero-card');
   if (S.photo && S.photo.dataUrl) {
     img.src = S.photo.dataUrl; img.hidden = false; card.classList.add('has-photo');
-    $('photo-btn').textContent = '写真を追加';
   } else {
     img.hidden = true; img.removeAttribute('src'); card.classList.remove('has-photo');
   }
@@ -1044,7 +1070,7 @@ document.addEventListener('input', function(ev){
   }
   if (S.view === 'secret') touchVault();
 });
-function renderHomeSecretState(){ $('tile-secret-state').textContent = S.vault ? '🔓 開いています' : '🔒 ロック中'; }
+function renderHomeSecretState(){ $('tile-secret-state').textContent = S.vault ? '🔓 開いています' : '🔒 ロック中・パスワードなど'; }
 $('sc-lock').addEventListener('click', function(){ lockVault(); renderHomeSecretState(); toast('ロックしました'); });
 document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'hidden' && S.vault) { lockVault(); renderHomeSecretState(); } });
 
@@ -1247,12 +1273,24 @@ function renderNotices(){
     var ng = nextGarbage(new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate() + 1));
     if (ng) out.push({tag:'gomi', t:'ごみ', click:'gomi', body:'明日はごみの日ではありません', sub:'次は ' + mdLabel(ng.date) + ' の' + ng.kinds.map(function(g){ return esc(g.kind); }).join('・') + gomiTable});
   }
+  var todayKey = ymd(today);
+  if (S.up) {
+    var hol0 = S.up.holidays.filter(function(h){ return h.date === todayKey; })[0];
+    if (hol0) out.unshift({tag:'cal', t:'祝日', go:'cal', body:'今日は' + esc(hol0.name)});
+    eventsOn(todayKey, S.up.events).forEach(function(e){
+      out.push({tag:'cal', t:'予定', go:'cal', body:'<span class="pdot ' + ownerCls(e.who) + '" style="display:inline-block;margin-right:6px"></span>' + (e.allDay ? '' : esc(e.start) + ' ') + esc(e.title), sub:e.location ? esc(e.location) : ''});
+    });
+  }
+  if (S.t) openTodos().filter(function(x){ return x.due && x.due <= S.t.today; }).slice(0, 3).forEach(function(x){
+    out.push({tag:'todo', t:'やること', go:'todo', body:(x.due < S.t.today ? '期限切れ：' : '今日まで：') + esc(x.title)});
+  });
   S.h.warranties.forEach(function(w){
     if (!w.date) return;
     var left = daysBetween(today, ymdToDate(w.date));
     if (left >= 0 && left <= 60) out.push({tag:'war', t:'保証', go:'docs', body:'「' + esc(w.name) + '」の保証が ' + mdLabel(ymdToDate(w.date)) + ' に切れます', sub:'あと' + left + '日' + (w.memo ? '・' + esc(w.memo) : '')});
     else if (left < 0 && left >= -30) out.push({tag:'war', t:'保証', go:'docs', body:'「' + esc(w.name) + '」の保証が切れました', sub:mdLabel(ymdToDate(w.date)) + 'まで'});
   });
+  if (!out.length) { $('notices').innerHTML = '<div class="today-empty">今日は特になし。のんびりいこう</div>'; return; }
   $('notices').innerHTML = out.map(function(n){
     var attr = n.click ? ' data-notice="' + n.click + '"' : (n.go ? ' data-go="' + n.go + '"' : '');
     return '<button class="notice" type="button"' + attr + '><span class="n-tag ' + n.tag + '">' + n.t + '</span><span class="n-body">' + n.body + (n.sub ? '<div class="n-sub">' + n.sub + '</div>' : '') + '</span></button>';
@@ -1331,7 +1369,7 @@ document.addEventListener('click', function(ev){
   if (sb) {
     var id = sb.dataset.id, x = S.h.shop.filter(function(i){ return i.id === id; })[0];
     if (sb.dataset.shop === 'toggle' && x) {
-      x.done = !x.done; renderShop();
+      x.done = !x.done; renderShop(); haptic();
       api('toggleShop', id, x.done).then(function(d){ S.h.shop = d; if (S.view === 'shop') renderShop(); })
         .catch(function(e){ x.done = !x.done; if (S.view === 'shop') renderShop(); toast(errMsg(e)); });
     }
@@ -1389,19 +1427,19 @@ function dayWord(k){
 }
 function renderCalTile(){
   var el = $('tile-cal'); if (!el) return;
-  var head = '<div class="t-head"><span class="t-name">カレンダー</span><span class="t-go">開く →</span></div>';
+  var head = '<span class="pin pin-y" aria-hidden="true"></span><div class="t-head"><span class="t-name">次の予定</span><span class="t-go">→</span></div>';
   if (!S.up) { el.innerHTML = head + '<div class="t-sub">' + (S.upErr ? 'まだ予定を読み込めていません' : '読み込み中…') + '</div>'; return; }
   var today = ymd(todayDate());
   var hol = S.up.holidays.filter(function(h){ return h.date === today; })[0];
-  var list = S.up.events.filter(function(e){ return e.endDate >= today; }).map(function(e){
+  var list = S.up.events.filter(function(e){ return e.date > today; }).map(function(e){
     var k = e.date < today ? today : e.date;
     return {e:e, k:k, sort:k + (e.allDay ? ' ' : e.date < today ? ' ' : e.start)};
-  }).sort(function(a, b){ return a.sort.localeCompare(b.sort); }).slice(0, 4);
-  el.innerHTML = head + (hol ? '<div class="t-sub">今日は' + esc(hol.name) + '</div>' : '') +
+  }).sort(function(a, b){ return a.sort.localeCompare(b.sort); }).slice(0, 3);
+  el.innerHTML = head +
     (list.length ? '<div class="cal-rows">' + list.map(function(x){
       var e = x.e, time = e.allDay ? '' : (e.date < today ? '' : ' ' + e.start);
       return '<div class="cal-row"><span class="when">' + dayWord(x.k) + time + '</span><span class="pdot ' + ownerCls(e.who) + '"></span><span class="tt">' + esc(e.title) + '</span></div>';
-    }).join('') + '</div>' : '<div class="t-sub">これから2週間の予定はありません</div>');
+    }).join('') + '</div>' : '<div class="t-sub">2週間は予定なし</div>');
 }
 function openCal(){
   if (!S.calMonth) { var t = todayDate(); S.calMonth = ymd(t).slice(0, 7); S.calSel = ymd(t); }
@@ -1527,6 +1565,68 @@ document.addEventListener('click', function(ev){
   }
 }, true);
 
+/* ---------- 下のタブバーと「＋」のシート ---------- */
+function haptic(){
+  try { if (navigator.vibrate) { navigator.vibrate(8); return; } } catch(e) {}
+  try {
+    // iPhoneのSafariはスイッチを押したときに軽く振動する。それを借りる（使えなくても動作に影響なし）
+    var l = document.getElementById('haptic-label');
+    if (!l) {
+      l = document.createElement('label'); l.id = 'haptic-label'; l.setAttribute('aria-hidden', 'true');
+      l.style.cssText = 'position:fixed;left:-100px;top:0;width:1px;height:1px;overflow:hidden;opacity:0';
+      var i = document.createElement('input'); i.type = 'checkbox'; i.setAttribute('switch', ''); i.tabIndex = -1;
+      l.appendChild(i); document.body.appendChild(l);
+    }
+    l.click();
+  } catch(e) {}
+}
+function openSheet(){
+  if (!S.m) return;
+  $('add-sheet').hidden = false; document.body.style.overflow = 'hidden'; haptic();
+  setTimeout(function(){ var c = document.querySelector('.sheet-close'); if (c) c.focus(); }, 50);
+}
+function closeSheet(){
+  if ($('add-sheet').hidden) return;
+  $('add-sheet').hidden = true; document.body.style.overflow = '';
+  var b = $('tab-add'); if (b && document.activeElement && $('add-sheet').contains(document.activeElement)) b.focus();
+}
+$('tab-add').addEventListener('click', openSheet);
+document.addEventListener('keydown', function(ev){ if (ev.key === 'Escape') closeSheet(); });
+$('q-shop').addEventListener('submit', function(ev){
+  ev.preventDefault();
+  var n = $('q-shop-in').value.trim(); if (!n) { $('q-shop-in').focus(); return; }
+  $('q-shop-in').value = '';
+  api('addShop', n, '').then(function(d){ S.h.shop = d; haptic(); toast('「' + n + '」を買い物リストに追加'); rerender(); })
+    .catch(function(e){ toast(errMsg(e)); });
+});
+$('q-todo').addEventListener('submit', function(ev){
+  ev.preventDefault();
+  var n = $('q-todo-in').value.trim(); if (!n) { $('q-todo-in').focus(); return; }
+  $('q-todo-in').value = '';
+  api('addTodo', {title:n, owner:S.me.member || OWNERS_BOTH, due:'', list:''}).then(function(d){ S.t = d; haptic(); toast('「' + n + '」をやることに追加'); rerender(); })
+    .catch(function(e){ toast(errMsg(e)); });
+});
+function goThen(view, param, fn){
+  closeSheet();
+  S.pending = {view:view, fn:fn};
+  go(view, param);
+}
+document.addEventListener('click', function(ev){
+  if (ev.target.closest('[data-close-sheet]')) { closeSheet(); return; }
+  var tb = ev.target.closest('[data-tab]'); if (tb) { if (S.m) { haptic(); go(tb.dataset.tab); } return; }
+  var q = ev.target.closest('[data-quick]'); if (!q || !S.m) return;
+  var k = q.dataset.quick;
+  if (k === 'event') goThen('cal', '', function(){ openEvForm(null); });
+  else if (k === 'deposit') goThen('fixed', '', function(){ S.fxMonth = S.f.thisMonth; renderFixed(); openDepForm(); });
+  else if (k === 'extra') goThen('fixed', '', function(){ S.fxMonth = S.f.thisMonth; renderFixed(); var b = document.querySelector('[data-action="open-extra"]'); if (b) b.click(); });
+  else if (k === 'expense') {
+    var act = S.m.projects.filter(function(p){ return p.status !== '完了'; })[0];
+    if (!act) { closeSheet(); go('money'); toast('進行中のプロジェクトがありません。先にプロジェクトを作ってください'); return; }
+    var name = S.project && S.m.projects.some(function(p){ return p.name === S.project && p.status !== '完了'; }) ? S.project : act.name;
+    goThen('project', name, function(){ openExp(null); });
+  }
+});
+
 /* ---------- 共通のクリック処理 ---------- */
 document.addEventListener('submit', function(ev){
   var f = ev.target.closest('[data-form="est"]'); if (!f) return;
@@ -1569,7 +1669,7 @@ document.addEventListener('click', function(ev){
   else if (a === 'toggle-todo') {
     var x = S.t.items.filter(function(i){ return i.id === id; })[0];
     if (x) {
-      x.done = !x.done; x.doneAt = x.done ? S.t.today : ''; renderTodo(); toast(x.done ? '「' + x.title + '」完了！' : '未完了に戻しました');
+      x.done = !x.done; x.doneAt = x.done ? S.t.today : ''; renderTodo(); haptic(); toast(x.done ? '「' + x.title + '」完了！' : '未完了に戻しました');
       api('setTodoDone', id, x.done).then(function(d){ S.t = d; if (S.view === 'todo') renderTodo(); })
         .catch(function(e){ x.done = !x.done; if (S.view === 'todo') renderTodo(); toast(errMsg(e)); });
     }

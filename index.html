@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <title>ふたりのホーム</title>
-<meta name="theme-color" content="#F2F4F1" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#131816" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#B98A5E" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#3E2D20" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-title" content="ふたりのホーム">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-180.png">
@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Maru+Gothic:wght@500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Klee+One:wght@600&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Maru+Gothic:wght@500;700&display=swap">
 <link rel="stylesheet" href="app.css">
 <script>
 // LINEの中のブラウザではGoogleにログインできないので、いつものブラウザ（Safari・Chrome）で開き直す
@@ -47,35 +47,49 @@
     </div>
   </div>
 
-  <!-- ホーム -->
-  <div class="view" id="v-home" hidden>
-    <div class="greet">
-      <div class="g-top">
-        <span class="eyebrow">ふたりのホーム</span>
-        <button class="photo-btn" id="photo-btn" type="button">写真を追加</button>
-      </div>
-      <div class="hero-card" id="hero-card">
+  <!-- ホーム（コルクボード） -->
+  <div class="view board" id="v-home" hidden>
+    <div class="polaroid" id="hero-card">
+      <span class="pin pin-r" aria-hidden="true"></span>
+      <div class="pol-photo">
         <img id="hero-img" alt="ふたりの写真" hidden>
-        <div class="hero-text">
-          <div class="g-hello" id="greet-title">こんにちは</div>
-          <div class="g-row">
-            <div class="g-date num" id="greet-date"></div>
-            <div class="g-time num" id="greet-time"></div>
-          </div>
-          <div class="g-anniv num" id="greet-anniv" hidden></div>
+        <span class="pol-empty" id="pol-empty">写真を貼りましょう</span>
+        <button class="pol-add" id="photo-btn" type="button" aria-label="ホームの写真を追加">＋ 写真</button>
+      </div>
+      <div class="pol-caption">
+        <div class="pol-row">
+          <span class="g-hello hand" id="greet-title">こんにちは</span>
+          <span class="g-clock num"><span id="greet-date"></span> <span id="greet-time"></span></span>
         </div>
+        <div class="g-anniv hand" id="greet-anniv" hidden></div>
       </div>
       <input type="file" id="photo-input" accept="image/*" hidden>
     </div>
-    <div class="notices" id="notices"></div>
+
+    <div class="paper today" id="today-card">
+      <span class="pin pin-b" aria-hidden="true"></span>
+      <div class="hand today-title">今日のふたり</div>
+      <div id="notices"></div>
+    </div>
+
     <div class="tiles">
-      <button class="tile wide c-money" type="button" data-go="money" id="tile-money"></button>
-      <button class="tile wide c-cal" type="button" data-go="cal" id="tile-cal"></button>
-      <button class="tile half c-todo" type="button" data-go="todo" id="tile-todo"></button>
-      <button class="tile half c-shop" type="button" data-go="shop" id="tile-shop"></button>
-      <button class="tile small c-docs" type="button" data-go="docs"><span class="t-name">書類</span><span class="t-sub">契約書・保証書など</span></button>
-      <button class="tile small c-photos" type="button" data-go="photos"><span class="t-name">写真</span><span class="t-sub">思い出のアルバム</span></button>
-      <button class="tile small c-secret" type="button" data-go="secret"><span class="t-name">機密</span><span class="t-sub">パスワードなど</span><span class="t-go" id="tile-secret-state">🔒 ロック中</span></button>
+      <button class="note wide n-paper tape" type="button" data-go="money" id="tile-money"></button>
+      <button class="note half n-yellow tilt-r" type="button" data-go="shop" id="tile-shop"><span class="pin pin-g" aria-hidden="true"></span></button>
+      <button class="note half n-blue tilt-l" type="button" data-go="todo" id="tile-todo"></button>
+      <button class="note half n-pink tilt-l2" type="button" data-go="cal" id="tile-anniv"></button>
+      <button class="note half n-paper tilt-r2" type="button" data-go="cal" id="tile-cal"></button>
+    </div>
+  </div>
+
+  <!-- その他 -->
+  <div class="view" id="v-more" hidden>
+    <div class="bar-top"><div><h1>その他</h1></div></div>
+    <div class="more-list">
+      <button class="more-item" type="button" data-go="todo"><span class="mi-dot n-blue"></span><span class="mi-main"><b>やること</b><small id="more-todo"></small></span><span class="mi-go">→</span></button>
+      <button class="more-item" type="button" data-go="shop"><span class="mi-dot n-yellow"></span><span class="mi-main"><b>買い物リスト</b><small id="more-shop"></small></span><span class="mi-go">→</span></button>
+      <button class="more-item" type="button" data-go="docs"><span class="mi-dot n-paper"></span><span class="mi-main"><b>書類</b><small>契約書・保証書・保証期限</small></span><span class="mi-go">→</span></button>
+      <button class="more-item" type="button" data-go="photos"><span class="mi-dot n-pink"></span><span class="mi-main"><b>写真</b><small>思い出のアルバム</small></span><span class="mi-go">→</span></button>
+      <button class="more-item" type="button" data-go="secret"><span class="mi-dot n-purple"></span><span class="mi-main"><b>機密</b><small id="tile-secret-state">🔒 ロック中</small></span><span class="mi-go">→</span></button>
     </div>
     <div class="home-foot">
       <a id="root-link" target="_blank" rel="noopener">ドライブの「ふたりのホーム」を開く</a>
@@ -472,6 +486,38 @@
   <div class="viewer-actions" id="viewer-actions"></div>
 </div>
 <div class="toast" id="toast" hidden></div>
+
+<nav class="tabbar" id="tabbar" hidden aria-label="メニュー">
+  <button type="button" class="tab" data-tab="home"><span class="tab-ico" aria-hidden="true">⌂</span>ホーム</button>
+  <button type="button" class="tab" data-tab="money"><span class="tab-ico" aria-hidden="true">¥</span>お金</button>
+  <button type="button" class="tab-add" id="tab-add" aria-label="追加する"><span aria-hidden="true">＋</span></button>
+  <button type="button" class="tab" data-tab="cal"><span class="tab-ico" aria-hidden="true">▦</span>予定</button>
+  <button type="button" class="tab" data-tab="more"><span class="tab-ico" aria-hidden="true">…</span>その他</button>
+</nav>
+
+<div class="sheet-wrap" id="add-sheet" hidden>
+  <div class="sheet-scrim" data-close-sheet></div>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <div class="sheet-head">
+      <div class="hand" id="sheet-title">なにを追加する？</div>
+      <button type="button" class="sheet-close" data-close-sheet aria-label="閉じる">×</button>
+    </div>
+    <form class="quick" id="q-shop" novalidate>
+      <label for="q-shop-in" class="q-lab"><span class="mi-dot n-yellow"></span>買い物リスト</label>
+      <div class="add-row"><input id="q-shop-in" maxlength="60" placeholder="牛乳、洗剤…"><button class="btn" type="submit">追加</button></div>
+    </form>
+    <form class="quick" id="q-todo" novalidate>
+      <label for="q-todo-in" class="q-lab"><span class="mi-dot n-blue"></span>やること</label>
+      <div class="add-row"><input id="q-todo-in" maxlength="80" placeholder="ゴミ袋を買う、粗大ごみを申し込む…"><button class="btn" type="submit">追加</button></div>
+    </form>
+    <div class="q-grid">
+      <button type="button" class="q-btn" data-quick="event"><span class="mi-dot n-pink"></span>予定</button>
+      <button type="button" class="q-btn" data-quick="expense"><span class="mi-dot n-paper"></span>プロジェクトの支出</button>
+      <button type="button" class="q-btn" data-quick="deposit"><span class="mi-dot n-green"></span>給料・入金</button>
+      <button type="button" class="q-btn" data-quick="extra"><span class="mi-dot n-orange"></span>臨時のお小遣い</button>
+    </div>
+  </div>
+</div>
 
 <script>
 // 予期しないエラーで真っ白にならないように、内容を画面に出す
