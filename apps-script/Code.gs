@@ -10,7 +10,7 @@
  */
 
 // ▼ Google Cloud で作った OAuth クライアントID を入れる
-const CLIENT_ID = 'ここにクライアントIDを貼る.apps.googleusercontent.com';
+const CLIENT_ID = '264124983411-o94hvp7221a45f6c59trdv628nt97flo.apps.googleusercontent.com';
 
 const MONEY_ID = '1lsNoI837NrxVJTpXI92RdQQLnfjNYcbPqSqEUOAWd6M';   // お金/ふたりのお金 台帳
 const TODO_ID  = '1551Q4cmKDR548uY1oc_eaK-gOAd8cml3658_1ez3uU0';   // やること/ふたりのやること
