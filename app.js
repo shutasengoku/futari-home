@@ -89,6 +89,7 @@ function showNow(view, param){
   $('tabbar').hidden = false;
   Array.prototype.forEach.call(document.querySelectorAll('[data-tab]'), function(t){ if (t.dataset.tab === TAB_OF[view]) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current'); });
   closeViewer(); closeSheet();
+  Array.prototype.forEach.call(document.querySelectorAll('form.form:not([hidden])'), function(f){ f.hidden = true; });
   if (view === 'more') renderMore();
   if (view === 'home') renderHome();
   if (view === 'money') renderMoneyHub();
@@ -236,7 +237,7 @@ function renderHome(){
   renderHomeSecretState();
 }
 /* ---------- あいちゃんへの記念日メッセージ（しゅうくんから） ---------- */
-var LOVE = {to:'あいちゃん', from:'しゅうより'};
+var LOVE = {to:'あいちゃん', from:'しゅうたより'};
 function renderLoveNote(){
   var el = $('love-note'), a = anniversaryInfo();
   if (!a || !S.me || S.me.member !== LOVE.to || !a.monthDay) { el.hidden = true; return; }
@@ -1626,6 +1627,28 @@ document.addEventListener('click', function(ev){
     goThen('project', name, function(){ openExp(null); });
   }
 });
+
+/* ---------- 入力フォームは下から出るシートとして扱う ---------- */
+function openForms(){ return Array.prototype.filter.call(document.querySelectorAll('form.form:not([hidden])'), function(f){ return f.getClientRects().length > 0; }); }
+function addFormCloser(f){
+  if (f.querySelector(':scope > .form-x')) return;
+  var b = document.createElement('button'); b.type = 'button'; b.className = 'form-x'; b.setAttribute('aria-label', '閉じる'); b.textContent = '×';
+  f.appendChild(b);
+}
+function closeForms(){ openForms().forEach(function(f){ f.hidden = true; if (f.id === 'sc-form') { S.scEdit = undefined; renderSecret(); } if (f.id === 'sc-pwform') { S.scPwForm = false; renderSecret(); } }); syncFormOpen(); }
+function syncFormOpen(){
+  var open = openForms();
+  open.forEach(addFormCloser);
+  document.body.classList.toggle('form-open', open.length > 0);
+}
+new MutationObserver(function(){ syncFormOpen(); }).observe(document.getElementById('app'), {subtree:true, childList:true, attributes:true, attributeFilter:['hidden']});
+window.addEventListener('click', function(ev){
+  var open = openForms(); if (!open.length) return;
+  var f = open[open.length - 1];
+  if (ev.target.closest('.form-x')) { ev.preventDefault(); ev.stopPropagation(); closeForms(); return; }
+  if (!f.contains(ev.target) && !ev.target.closest('.toast')) { ev.preventDefault(); ev.stopPropagation(); closeForms(); }
+}, true);
+document.addEventListener('keydown', function(ev){ if (ev.key === 'Escape' && openForms().length) closeForms(); });
 
 /* ---------- 共通のクリック処理 ---------- */
 document.addEventListener('submit', function(ev){

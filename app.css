@@ -392,30 +392,30 @@ input,select.in{font:inherit;color:var(--ink);background:var(--bg);border:1px so
 .today-empty{font-size:13px;color:var(--muted);padding:4px 0}
 
 .tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 12px}
-.note{position:relative;display:flex;flex-direction:column;gap:4px;padding:16px 12px 12px;min-width:0;box-shadow:var(--shadow);text-align:left;color:var(--ink);background:var(--surface)}
-.note.wide{grid-column:span 2}
-.note .t-head{display:flex;justify-content:space-between;align-items:baseline;gap:6px}
-.note .t-name{font-family:var(--f-hand);font-weight:600;font-size:15px}
-.note .t-go{font-size:12px;opacity:.7}
-.note .t-big{font-family:var(--f-display);font-weight:700;font-size:24px;line-height:1.15}
-.note.wide .t-big{font-size:28px}
-.note .t-sub{font-size:12px;opacity:.8}
-.note .mini-list{font-family:var(--f-hand);font-weight:600;font-size:13px}
-.note.tape::before{content:"";position:absolute;top:-9px;left:50%;margin-left:-38px;width:76px;height:20px;background:var(--tape);transform:rotate(-2deg);box-shadow:0 1px 2px rgba(0,0,0,.15)}
+.tiles .note{position:relative;display:flex;flex-direction:column;gap:4px;padding:16px 12px 12px;min-width:0;box-shadow:var(--shadow);text-align:left;color:var(--ink);background:var(--surface)}
+.tiles .note.wide{grid-column:span 2}
+.tiles .note .t-head{display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+.tiles .note .t-name{font-family:var(--f-hand);font-weight:600;font-size:15px}
+.tiles .note .t-go{font-size:12px;opacity:.7}
+.tiles .note .t-big{font-family:var(--f-display);font-weight:700;font-size:24px;line-height:1.15}
+.tiles .note.wide .t-big{font-size:28px}
+.tiles .note .t-sub{font-size:12px;opacity:.8}
+.tiles .note .mini-list{font-family:var(--f-hand);font-weight:600;font-size:13px}
+.tiles .note.tape::before{content:"";position:absolute;top:-9px;left:50%;margin-left:-38px;width:76px;height:20px;background:var(--tape);transform:rotate(-2deg);box-shadow:0 1px 2px rgba(0,0,0,.15)}
 .n-paper{background:var(--surface);color:var(--ink)}
 .n-yellow{background:var(--note-y);color:var(--note-y-ink)} .n-blue{background:var(--note-b);color:var(--note-b-ink)}
 .n-pink{background:var(--note-p);color:var(--note-p-ink)} .n-green{background:var(--note-g);color:var(--note-g-ink)}
 .n-orange{background:var(--note-o);color:var(--note-o-ink)} .n-purple{background:var(--note-v);color:var(--note-v-ink)}
 .tilt-r{transform:rotate(1.6deg)} .tilt-l{transform:rotate(-1.3deg)} .tilt-l2{transform:rotate(-.9deg)} .tilt-r2{transform:rotate(1.1deg)}
-.note .bar{background:var(--chip)}
-.note .t-rows{gap:4px}
-.note .t-row b{font-size:17px}
-.note .cal-rows{gap:3px}
-.note .cal-row{font-size:12px}
-.note .cal-row .when{width:auto;min-width:3.6em;color:inherit;opacity:.75}
+.tiles .note .bar{background:var(--chip)}
+.tiles .note .t-rows{gap:4px}
+.tiles .note .t-row b{font-size:17px}
+.tiles .note .cal-rows{gap:3px}
+.tiles .note .cal-row{font-size:12px}
+.tiles .note .cal-row .when{width:auto;min-width:3.6em;color:inherit;opacity:.75}
 @media (prefers-reduced-motion:no-preference){
-  .note,.polaroid,.paper{transition:transform .2s ease}
-  .note:active,.polaroid:active{transform:rotate(0) scale(.98)}
+  .tiles .note,.polaroid,.paper{transition:transform .2s ease}
+  .tiles .note:active,.polaroid:active{transform:rotate(0) scale(.98)}
 }
 
 /* その他 */
@@ -493,3 +493,57 @@ input,select.in{font:inherit;color:var(--ink);background:var(--bg);border:1px so
 @keyframes love-in{from{transform:rotate(-6deg) scale(.85);opacity:0}to{transform:rotate(-1deg) scale(1);opacity:1}}
 @keyframes heart-up{0%{opacity:0;transform:translateY(0) scale(.6)}20%{opacity:1}100%{opacity:0;transform:translateY(-120px) scale(1.15)}}
 .love-text .kao{white-space:nowrap;display:inline-block}
+
+/* =========================================================
+   スマホで使いやすく（大きめの文字・押しやすいボタン・入力は下から出るシート）
+   ========================================================= */
+body{font-size:16px}
+input,select,select.in,textarea{font-size:16px}   /* 16px未満だとiPhoneが入力時に勝手に拡大する */
+.refresh:not(#sc-lock){display:none}
+.view:not(.board):not(#v-login){padding:22px 14px 20px;gap:20px}
+.view h1{font-size:24px}
+.bar-top{align-items:center}
+.sec-head .meta,.row .sub,.t-sub,.person .left,.chip{font-size:13px}
+.legend{font-size:13px}
+.row{min-height:56px;padding:10px 12px}
+.btn{font-size:15px;padding:10px 18px;min-height:44px}
+.icon-btn{width:44px;height:44px;font-size:20px;margin:-6px -8px -6px 0}
+.small-btn{font-size:14px;padding:8px 14px;min-height:40px}
+.mini-btn{font-size:13px;padding:6px 12px;min-height:34px}
+.link-btn{font-size:14px;padding:8px 0}
+.paid-btn{font-size:13px;padding:8px 12px;min-height:38px}
+.need,.est-btn{padding:8px 0}
+.est-btn.unset,.need{font-size:14px}
+.check{width:30px;height:30px;border-width:2px;position:relative}
+.check::before{content:"";position:absolute;inset:-8px}
+.seg button{padding:11px 4px;font-size:15px;min-height:46px}
+input,select.in{padding:11px 12px;min-height:46px}
+.cal-day{min-height:50px}
+.month-nav .icon-btn{margin:0}
+.toggle-done{font-size:15px;padding:10px 2px}
+.filters button{font-size:14px;padding:8px 14px}
+.inline-est input{width:120px;padding:8px 10px}
+
+/* フォームはその場に開かず、画面の下からせり上がるシートにする */
+form.form:not([hidden]){position:fixed;left:0;right:0;bottom:0;z-index:26;margin:0 auto;max-width:680px;max-height:88vh;overflow:auto;
+  border:none;border-radius:16px 16px 0 0;background:var(--sheet);
+  box-shadow:0 0 0 100vmax rgba(20,12,4,.45),0 -4px 20px rgba(0,0,0,.3);
+  padding:18px max(16px,env(safe-area-inset-right,0px)) calc(18px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));gap:14px}
+form.form .ftitle{font-family:var(--f-hand);font-weight:600;font-size:20px;padding-right:48px}
+form.form .actions{position:sticky;bottom:calc(-18px - env(safe-area-inset-bottom,0px));background:var(--sheet);padding:10px 0 4px;margin-top:2px}
+form.form .actions .btn{flex:1}
+form.form .actions .danger-text{flex:none}
+.form-x{position:absolute;top:8px;right:8px;width:44px;height:44px;border-radius:50%;font-size:24px;color:var(--muted);text-align:center}
+@media (prefers-reduced-motion:no-preference){ form.form:not([hidden]){animation:sheet-up .22s ease-out} }
+body.form-open{overflow:hidden}
+
+/* ホームを短く */
+.pol-photo{aspect-ratio:16 / 10}
+.board{gap:18px}
+.today-title{font-size:18px}
+.notice{font-size:15px}
+.tiles .note{min-height:96px}
+.tab{font-size:12px}
+.tab svg{width:24px;height:24px}
+.bar-top .note{font-size:13px;color:var(--muted)}
+.pol-photo{aspect-ratio:16 / 9}
